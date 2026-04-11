@@ -1,0 +1,1 @@
+{"version":3,"file":"health.d.ts","sourceRoot":"","sources":["../../../../src/integrations/mt5/sdk/health.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,UAAU,EAAE,MAAM,6BAA6B,CAAC;AAE9D,MAAM,WAAW,mBAAmB;IAClC,MAAM,EAAE,MAAM,CAAC;IACf,SAAS,EAAE,MAAM,CAAC;CACnB;AAED,qBAAa,SAAS;IACR,OAAO,CAAC,QAAQ,CAAC,MAAM;gBAAN,MAAM,EAAE,UAAU;IAEzC,KAAK,IAAI,OAAO,CAAC,mBAAmB,CAAC;CAI5C"}

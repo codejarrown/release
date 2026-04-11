@@ -1,0 +1,31 @@
+name: Release One-Click Bundle
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/release-one-click.yml"
+      - "release/**"
+
+permissions:
+  contents: read
+
+jobs:
+  upload-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Upload release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-bundle
+          path: |
+            release/**
+            !release/.DS_Store
+          if-no-files-found: error
+          retention-days: 30
