@@ -7,7 +7,7 @@ on:
       - main
     paths:
       - ".github/workflows/release-one-click.yml"
-      - "release/**"
+      - "one-click/**"
 
 permissions:
   contents: read
@@ -25,7 +25,6 @@ jobs:
         with:
           name: release-bundle
           path: |
-            release/**
-            !release/.DS_Store
+            one-click
           if-no-files-found: error
           retention-days: 30
