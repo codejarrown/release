@@ -10,21 +10,58 @@ on:
       - "one-click/**"
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  upload-release:
+  publish-release:
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Upload release artifact
-        uses: actions/upload-artifact@v4
+      - name: Read bundle version
+        id: meta
+        run: |
+          version="$(python3 - <<'PY'
+          import json
+          with open('one-click/version.json', 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          print(data['version'])
+          PY
+          )"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+
+      - name: Create zip bundle
+        run: |
+          zip -r one-click.zip one-click
+
+      - name: Generate latest.json
+        run: |
+          python3 - <<'PY'
+          import json
+          import os
+          version_path = 'one-click/version.json'
+          with open(version_path, 'r', encoding='utf-8') as f:
+              data = json.load(f)
+          tag = f"v{data['version']}"
+          repo = os.environ['GITHUB_REPOSITORY']
+          data['tag'] = tag
+          data['bundleUrl'] = f"https://github.com/{repo}/releases/download/{tag}/one-click.zip"
+          data['latestJsonUrl'] = f"https://github.com/{repo}/releases/latest/download/latest.json"
+          data['releaseUrl'] = f"https://github.com/{repo}/releases/tag/{tag}"
+          with open('latest.json', 'w', encoding='utf-8') as f:
+              json.dump(data, f, ensure_ascii=False, indent=2)
+          PY
+
+      - name: Publish GitHub Release
+        uses: softprops/action-gh-release@v2
         with:
-          name: release-bundle
-          path: |
-            one-click
-          if-no-files-found: error
-          retention-days: 30
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: ${{ steps.meta.outputs.tag }}
+          files: |
+            one-click.zip
+            latest.json
+          generate_release_notes: true
+          make_latest: true
