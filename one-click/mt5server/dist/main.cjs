@@ -15408,16 +15408,16 @@ var require_validate = __commonJS({
         const matches = RELATIVE_JSON_POINTER.exec($data);
         if (!matches)
           throw new Error(`Invalid JSON-pointer: ${$data}`);
-        const up12 = +matches[1];
+        const up13 = +matches[1];
         jsonPointer = matches[2];
         if (jsonPointer === "#") {
-          if (up12 >= dataLevel)
-            throw new Error(errorMsg("property/index", up12));
-          return dataPathArr[dataLevel - up12];
+          if (up13 >= dataLevel)
+            throw new Error(errorMsg("property/index", up13));
+          return dataPathArr[dataLevel - up13];
         }
-        if (up12 > dataLevel)
-          throw new Error(errorMsg("data", up12));
-        data = dataNames[dataLevel - up12];
+        if (up13 > dataLevel)
+          throw new Error(errorMsg("data", up13));
+        data = dataNames[dataLevel - up13];
         if (!jsonPointer)
           return data;
       }
@@ -15430,8 +15430,8 @@ var require_validate = __commonJS({
         }
       }
       return expr;
-      function errorMsg(pointerType, up12) {
-        return `Cannot access ${pointerType} ${up12} levels up, current level is ${dataLevel}`;
+      function errorMsg(pointerType, up13) {
+        return `Cannot access ${pointerType} ${up13} levels up, current level is ${dataLevel}`;
       }
     }
     exports2.getData = getData;
@@ -78504,6 +78504,25 @@ async function down11(db) {
   await db.schema.alterTable("mt5_accounts").dropColumn("auto_reconnect_enabled").execute();
 }
 
+// src/db/migrations/012_order_group_spreads.ts
+var order_group_spreads_exports = {};
+__export(order_group_spreads_exports, {
+  down: () => down12,
+  up: () => up12
+});
+async function up12(db) {
+  const columns = await sql`PRAGMA table_info(order_groups)`.execute(db);
+  const columnNames = new Set(columns.rows.map((row) => row.name));
+  if (!columnNames.has("open_spread")) {
+    await db.schema.alterTable("order_groups").addColumn("open_spread", "real").execute();
+  }
+  if (!columnNames.has("close_spread")) {
+    await db.schema.alterTable("order_groups").addColumn("close_spread", "real").execute();
+  }
+}
+async function down12(_db) {
+}
+
 // src/db/migrator.ts
 var migrations = {
   "001_initial": initial_exports,
@@ -78516,7 +78535,8 @@ var migrations = {
   "008_spread_subscriptions": spread_subscriptions_exports,
   "009_spread_subscription_thresholds": spread_subscription_thresholds_exports,
   "010_spread_subscription_lots": spread_subscription_lots_exports,
-  "011_account_reconnect_fields": account_reconnect_fields_exports
+  "011_account_reconnect_fields": account_reconnect_fields_exports,
+  "012_order_group_spreads": order_group_spreads_exports
 };
 var StaticMigrationProvider = class {
   async getMigrations() {
@@ -79394,19 +79414,21 @@ var ORDER_TYPE_MAP = {
   5: "SellStop"
 };
 var OrderGroupService = class extends import_node_events2.EventEmitter {
-  constructor(orderGroupRepo, accountGroupRepo, accountRepo, mt5Sdk, pushService) {
+  constructor(orderGroupRepo, accountGroupRepo, accountRepo, mt5Sdk, pushService, spreadSubscriptionRepo) {
     super();
     this.orderGroupRepo = orderGroupRepo;
     this.accountGroupRepo = accountGroupRepo;
     this.accountRepo = accountRepo;
     this.mt5Sdk = mt5Sdk;
     this.pushService = pushService;
+    this.spreadSubscriptionRepo = spreadSubscriptionRepo;
   }
   orderGroupRepo;
   accountGroupRepo;
   accountRepo;
   mt5Sdk;
   pushService;
+  spreadSubscriptionRepo;
   spreadService = null;
   setSpreadService(spreadService) {
     this.spreadService = spreadService;
@@ -79499,7 +79521,10 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     }
     await this.orderGroupRepo.refreshFullyClosedStatus(groupId);
     const full = await this.orderGroupRepo.findByIdWithItems(groupId);
-    const dto = await this.toDto(full);
+    const openSpread = await this.computePersistedSpread(full, "open");
+    await this.orderGroupRepo.update(groupId, { open_spread: openSpread });
+    const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
+    const dto = await this.toDto(refreshed);
     if (dto.openCount > 0) {
       await this.pushService.broadcast({
         title: "\u8BA2\u5355\u7EC4\u5F00\u4ED3\u901A\u77E5",
@@ -79507,15 +79532,16 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
           `\u8BA2\u5355\u7EC4: ${dto.name} (#${dto.id})`,
           `\u8D26\u53F7\u7EC4: ${dto.accountGroupName ?? "\u672A\u7ED1\u5B9A"}`,
           `\u5F00\u4ED3\u6570\u91CF: ${dto.openCount}`,
-          `\u603B\u76C8\u4E8F: ${dto.totalProfit}`
-        ].join("\n"),
+          `\u5F00\u4ED3\u5DEE\u4EF7: ${formatOrderGroupSpread(openSpread)}`
+        ].join("\n\n"),
         level: "info",
         metadata: {
           kind: "order-group-open",
           groupId: dto.id,
           name: dto.name,
           accountGroupId: dto.accountGroupId,
-          openCount: dto.openCount
+          openCount: dto.openCount,
+          openSpread
         }
       });
     }
@@ -79562,7 +79588,10 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     const [, reverseResult] = await Promise.allSettled([closePromise, reversePromise]);
     await this.orderGroupRepo.refreshFullyClosedStatus(groupId);
     const full = await this.orderGroupRepo.findByIdWithItems(groupId);
-    const dto = await this.toDto(full);
+    const closeSpread = await this.computePersistedSpread(full, "close");
+    await this.orderGroupRepo.update(groupId, { close_spread: closeSpread });
+    const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
+    const dto = await this.toDto(refreshed);
     await this.pushService.broadcast({
       title: "\u8BA2\u5355\u7EC4\u5E73\u4ED3\u901A\u77E5",
       body: [
@@ -79571,8 +79600,9 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
         `\u662F\u5426\u5B8C\u5168\u5E73\u4ED3: ${dto.isFullyClosed ? "\u662F" : "\u5426"}`,
         `\u5DF2\u5E73\u4ED3\u6570\u91CF: ${dto.closedCount}`,
         `\u672A\u5E73\u4ED3\u6570\u91CF: ${dto.openCount}`,
+        `\u5E73\u4ED3\u5DEE\u4EF7: ${formatOrderGroupSpread(dto.closeSpread)}`,
         `\u603B\u76C8\u4E8F: ${dto.totalProfit}`
-      ].join("\n"),
+      ].join("\n\n"),
       level: "info",
       metadata: {
         kind: "order-group-close",
@@ -79581,7 +79611,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
         accountGroupId: dto.accountGroupId,
         openCount: dto.openCount,
         closedCount: dto.closedCount,
-        isFullyClosed: dto.isFullyClosed
+        isFullyClosed: dto.isFullyClosed,
+        closeSpread: dto.closeSpread
       }
     });
     this.publishGroupState(dto);
@@ -79774,6 +79805,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
       accountGroupName,
       isFullyClosed: group.is_fully_closed === 1,
       remark: group.remark,
+      openSpread: group.open_spread == null ? null : roundTo5(group.open_spread),
+      closeSpread: group.close_spread == null ? null : roundTo5(group.close_spread),
       totalProfit: Math.round(totalProfit * 100) / 100,
       openCount,
       closedCount,
@@ -79792,6 +79825,39 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
       groupId: dto.id,
       accountGroupId: dto.accountGroupId
     });
+  }
+  async computePersistedSpread(group, priceField) {
+    const priceKey = priceField === "open" ? "open_price" : "close_price";
+    const pricedItems = group.items.filter((item) => typeof item[priceKey] === "number");
+    if (pricedItems.length < 2) return null;
+    const spreadHint = await this.resolveSpreadHint(group.account_group_id, group.remark);
+    if (spreadHint?.accountGroup && spreadHint.subscription) {
+      const itemA = pricedItems.find((item) => item.account_id === spreadHint.accountGroup.account_a_id && item.symbol === spreadHint.subscription.symbol_a);
+      const itemB = pricedItems.find((item) => item.id !== itemA?.id && item.account_id === spreadHint.accountGroup.account_b_id && item.symbol === spreadHint.subscription.symbol_b);
+      const spread = computeLegSpread(itemA, itemB, priceKey);
+      if (spread !== null) return spread;
+    }
+    if (spreadHint?.accountGroup) {
+      const itemA = pricedItems.find((item) => item.account_id === spreadHint.accountGroup.account_a_id);
+      const itemB = pricedItems.find((item) => item.id !== itemA?.id && item.account_id === spreadHint.accountGroup.account_b_id);
+      const spread = computeLegSpread(itemA, itemB, priceKey);
+      if (spread !== null) return spread;
+    }
+    return computeLegSpread(pricedItems[0], pricedItems[1], priceKey);
+  }
+  async resolveSpreadHint(accountGroupId, remark) {
+    if (!accountGroupId) return null;
+    const accountGroup = await this.accountGroupRepo.findById(accountGroupId);
+    if (!accountGroup) return null;
+    const metadata = parseSpreadRemark(remark);
+    if (!metadata.subscriptionId || !this.spreadSubscriptionRepo) {
+      return { accountGroup, subscription: null };
+    }
+    const subscription = await this.spreadSubscriptionRepo.findById(metadata.subscriptionId);
+    if (!subscription || subscription.account_group_id !== accountGroupId) {
+      return { accountGroup, subscription: null };
+    }
+    return { accountGroup, subscription };
   }
 };
 function toItemDto(item) {
@@ -79814,6 +79880,24 @@ function toItemDto(item) {
     openedAt: item.opened_at,
     closedAt: item.closed_at
   };
+}
+function formatOrderGroupSpread(value) {
+  if (value === null) return "\u2014";
+  return String(roundTo5(value));
+}
+function computeLegSpread(itemA, itemB, priceKey) {
+  if (!itemA || !itemB || itemA.id === itemB.id || itemA.lots <= 0) {
+    return null;
+  }
+  const priceA = itemA[priceKey];
+  const priceB = itemB[priceKey];
+  if (typeof priceA !== "number" || typeof priceB !== "number") {
+    return null;
+  }
+  return roundTo5(priceA - itemB.lots / itemA.lots * priceB);
+}
+function roundTo5(value) {
+  return Math.round(value * 1e5) / 1e5;
 }
 function parseSpreadRemark(remark) {
   if (!remark) {
@@ -80739,7 +80823,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
         `\u5F53\u524D ${spreadValue}\uFF0C\u9608\u503C ${directionInfo.operatorLabel} ${threshold}`,
         `\u7A33\u5B9A ${stableSeconds}s`,
         `A ${runtime.row.symbol_a} / B ${runtime.row.symbol_b}`
-      ].join("\n"),
+      ].join("\n\n"),
       level: "info",
       metadata: {
         kind: "spread-stable-threshold",
@@ -81746,7 +81830,14 @@ async function buildAppContext(config2) {
   const pushService = new PushService(repos.pushChannel, config2.ACCOUNT_ENCRYPTION_KEY);
   const wsManager = new WsConnectionManager(mt5Sdk, config2.MT5_WS_BASE_URL);
   const realtimeApp = new RealtimeApp();
-  const orderGroupService = new OrderGroupService(repos.orderGroup, repos.accountGroup, repos.mt5Account, mt5Sdk, pushService);
+  const orderGroupService = new OrderGroupService(
+    repos.orderGroup,
+    repos.accountGroup,
+    repos.mt5Account,
+    mt5Sdk,
+    pushService,
+    repos.spreadSubscription
+  );
   const spreadService = new SpreadService(repos.spreadSubscription, repos.accountGroup, wsManager, mt5Sdk, pushService, orderGroupService);
   const accountService = new AccountService(repos.mt5Account, mt5Sdk, config2.ACCOUNT_ENCRYPTION_KEY);
   const accountHeartbeatService = new AccountHeartbeatService(accountService, wsManager, realtimeApp);
@@ -85129,6 +85220,8 @@ var orderGroupDto = {
     accountGroupName: { type: "string", nullable: true },
     isFullyClosed: { type: "boolean" },
     remark: { type: "string", nullable: true },
+    openSpread: { type: "number", nullable: true },
+    closeSpread: { type: "number", nullable: true },
     totalProfit: { type: "number" },
     openCount: { type: "integer" },
     closedCount: { type: "integer" },
@@ -85717,6 +85810,8 @@ var orderGroupDto2 = {
     accountGroupName: { type: "string", nullable: true },
     isFullyClosed: { type: "boolean" },
     remark: { type: "string", nullable: true },
+    openSpread: { type: "number", nullable: true },
+    closeSpread: { type: "number", nullable: true },
     totalProfit: { type: "number" },
     openCount: { type: "integer" },
     closedCount: { type: "integer" },
