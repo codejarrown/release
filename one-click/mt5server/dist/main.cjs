@@ -81328,7 +81328,7 @@ var RealtimeBus = class extends import_node_events5.EventEmitter {
     this.emit("spreadUpdate", payload);
   }
   emitSpreadHeartbeat(payload) {
-    this.emit("spreadHeartbeat", payload);
+    this.emit("spreadUpdate", payload);
   }
   emitSpreadRuntimeState(payload) {
     this.emit("spreadRuntimeState", payload);
@@ -84387,20 +84387,6 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
       }
     }
   }
-  function handleSpreadHeartbeat(payload) {
-    const message = createOutboundMessage("spreadHeartbeat", {
-      subscriptionId: payload.subscriptionId,
-      accountGroupId: payload.accountGroupId,
-      accountAHeartbeat: payload.accountAHeartbeat,
-      accountBHeartbeat: payload.accountBHeartbeat
-    });
-    for (const client of clients) {
-      if (!client.subscribedSpreadIds.has(payload.subscriptionId)) continue;
-      if (client.ws.readyState === client.ws.OPEN) {
-        client.ws.send(message);
-      }
-    }
-  }
   ;
   [
     "disconnected",
@@ -84424,14 +84410,6 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
     });
   });
   if (realtimeApp) {
-    realtimeApp.on("orderUpdate", (payload) => {
-      const message = createOutboundMessage("orderUpdate", payload);
-      for (const client of clients) {
-        if (client.ws.readyState === client.ws.OPEN) {
-          client.ws.send(message);
-        }
-      }
-    });
     realtimeApp.on("orderUpdateSnapshot", (payload) => {
       const message = createOutboundMessage("orderUpdateSnapshot", payload);
       for (const client of clients) {
@@ -84459,7 +84437,6 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
       }
     });
     realtimeApp.on("spreadUpdate", handleSpreadUpdate);
-    realtimeApp.on("spreadHeartbeat", handleSpreadHeartbeat);
     realtimeApp.on("spreadRuntimeState", (payload) => {
       for (const client of clients) {
         if (payload.runtimeStarted) {
@@ -84481,7 +84458,16 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
       }
     });
     spreadService.on("spreadHeartbeat", (payload) => {
-      const message = createOutboundMessage("spreadHeartbeat", payload);
+      const snapshot = spreadService.getSnapshot(payload.subscriptionId);
+      const message = createOutboundMessage("spreadUpdate", {
+        subscriptionId: payload.subscriptionId,
+        accountGroupId: payload.accountGroupId,
+        snapshot: snapshot ? {
+          ...snapshot,
+          accountAQuote: snapshot.accountAQuote ? { ...snapshot.accountAQuote, heartbeat: payload.accountAHeartbeat } : null,
+          accountBQuote: snapshot.accountBQuote ? { ...snapshot.accountBQuote, heartbeat: payload.accountBHeartbeat } : null
+        } : null
+      });
       for (const client of clients) {
         if (!client.subscribedSpreadIds.has(payload.subscriptionId)) continue;
         if (client.ws.readyState === client.ws.OPEN) {
@@ -84497,14 +84483,6 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
           client.subscribedSpreadIds.delete(payload.subscriptionId);
         }
         sendSpreadSubscribed(client);
-      }
-    });
-    wsManager.on("orderUpdate", (payload) => {
-      const message = createOutboundMessage("orderUpdate", payload);
-      for (const client of clients) {
-        if (client.ws.readyState === client.ws.OPEN) {
-          client.ws.send(message);
-        }
       }
     });
     wsManager.on("orderUpdateSnapshot", (payload) => {
@@ -84598,8 +84576,7 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
         "",
         "\u4EF7\u5DEE\u8BA2\u9605\u63A8\u9001\u6D88\u606F\uFF1A",
         "- `spreadSnapshot`\uFF1A\u8BA2\u9605\u6210\u529F\u540E\u7ACB\u5373\u8FD4\u56DE\u4E00\u6B21\u5F53\u524D\u5FEB\u7167",
-        "- `spreadUpdate`\uFF1AA / B \u4EFB\u4E00\u4EF7\u683C\u53D8\u5316\u65F6\u7ACB\u5373\u63A8\u9001",
-        "- `spreadHeartbeat`\uFF1A\u6BCF 100ms \u63A8\u9001\u4E00\u6B21\u8F7B\u91CF\u5FC3\u8DF3\uFF0C\u53EA\u8FD4\u56DE A / B \u4E24\u817F\u7684 heartbeat \u8BA1\u6570",
+        "- `spreadUpdate`\uFF1AA / B \u4EFB\u4E00\u4EF7\u683C\u53D8\u5316\u65F6\u7ACB\u5373\u63A8\u9001\uFF08\u542B A/B heartbeat\uFF0C\u5DF2\u5408\u5E76\u5FC3\u8DF3\u6D88\u606F\uFF09",
         "- `spreadOrderResult`\uFF1A\u901A\u8FC7 WS \u4E0B\u53D1\u6269/\u7F29\u4EA4\u6613\u547D\u4EE4\u540E\u7684\u540C\u6B65\u7ED3\u679C\u56DE\u5305",
         "- `orderGroupCloseResult`\uFF1A\u901A\u8FC7 WS \u4E0B\u53D1\u5355\u4E2A\u8BA2\u5355\u7EC4\u5E73\u4ED3\u547D\u4EE4\u540E\u7684\u540C\u6B65\u7ED3\u679C\u56DE\u5305",
         "- `orderGroupCloseManyResult`\uFF1A\u901A\u8FC7 WS \u4E0B\u53D1\u6279\u91CF\u8BA2\u5355\u7EC4\u5E73\u4ED3\u547D\u4EE4\u540E\u7684\u540C\u6B65\u7ED3\u679C\u56DE\u5305"
