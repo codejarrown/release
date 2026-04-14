@@ -79526,7 +79526,7 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
     const dto = await this.toDto(refreshed);
     if (dto.openCount > 0) {
-      await this.pushService.broadcast({
+      void Promise.resolve(this.pushService.broadcast({
         title: "\u8BA2\u5355\u7EC4\u5F00\u4ED3\u901A\u77E5",
         body: [
           `\u8BA2\u5355\u7EC4: ${dto.name} (#${dto.id})`,
@@ -79543,6 +79543,7 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
           openCount: dto.openCount,
           openSpread
         }
+      })).catch(() => {
       });
     }
     this.publishGroupState(dto);
@@ -79592,7 +79593,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     await this.orderGroupRepo.update(groupId, { close_spread: closeSpread });
     const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
     const dto = await this.toDto(refreshed);
-    await this.pushService.broadcast({
+    this.publishGroupState(dto);
+    void Promise.resolve(this.pushService.broadcast({
       title: "\u8BA2\u5355\u7EC4\u5E73\u4ED3\u901A\u77E5",
       body: [
         `\u8BA2\u5355\u7EC4: ${dto.name} (#${dto.id})`,
@@ -79614,8 +79616,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
         isFullyClosed: dto.isFullyClosed,
         closeSpread: dto.closeSpread
       }
+    })).catch(() => {
     });
-    this.publishGroupState(dto);
     if (reverseResult.status === "rejected") {
       throw new Error(`\u53CD\u5411\u5F00\u4ED3\u5931\u8D25\uFF1A${reverseResult.reason instanceof Error ? reverseResult.reason.message : String(reverseResult.reason)}`);
     }
@@ -80612,7 +80614,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       seconds,
       accountA: filtered.map((point) => ({ time: point.time, value: point.accountAMid })),
       accountB: filtered.map((point) => ({ time: point.time, value: point.accountBMid })),
-      spread: filtered.map((point) => ({ time: point.time, value: point.spread }))
+      expandSpread: filtered.map((point) => ({ time: point.time, value: point.expandSpread })),
+      shrinkSpread: filtered.map((point) => ({ time: point.time, value: point.shrinkSpread }))
     };
   }
   async placeOrder(accountGroupId, input) {
@@ -80799,10 +80802,12 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const stability = snapshot.stability;
     const neededMs = row.notify_stability_seconds * 1e3;
     if (row.notify_expand_threshold !== null && snapshot.longSpread !== null && snapshot.longSpread <= row.notify_expand_threshold && stability.longStableMs >= neededMs) {
-      await this.sendNotification(runtime, snapshot, "long");
+      void this.sendNotification(runtime, snapshot, "long").catch(() => {
+      });
     }
     if (row.notify_contract_threshold !== null && snapshot.shortSpread !== null && snapshot.shortSpread >= row.notify_contract_threshold && stability.shortStableMs >= neededMs) {
-      await this.sendNotification(runtime, snapshot, "short");
+      void this.sendNotification(runtime, snapshot, "short").catch(() => {
+      });
     }
   }
   async sendNotification(runtime, snapshot, direction) {
@@ -81001,7 +81006,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     });
   }
   recordSecondLinePoint(subscriptionId, snapshot) {
-    if (!snapshot.accountAQuote || !snapshot.accountBQuote || snapshot.longSpread === null) return;
+    if (!snapshot.accountAQuote || !snapshot.accountBQuote || snapshot.longSpread === null || snapshot.shortSpread === null) return;
     const accountATimestamp = Date.parse(snapshot.accountAQuote.time);
     const accountBTimestamp = Date.parse(snapshot.accountBQuote.time);
     const timestamp = Math.max(accountATimestamp, accountBTimestamp);
@@ -81011,7 +81016,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       timestamp,
       accountAMid: roundNumber((snapshot.accountAQuote.bid + snapshot.accountAQuote.ask) / 2),
       accountBMid: roundNumber((snapshot.accountBQuote.bid + snapshot.accountBQuote.ask) / 2),
-      spread: snapshot.longSpread
+      expandSpread: snapshot.longSpread,
+      shrinkSpread: snapshot.shortSpread
     };
     const existing = this.secondPointStore.get(subscriptionId) ?? [];
     existing.push(point);
@@ -85753,7 +85759,8 @@ var spreadSecondLineSeedDto = {
     seconds: { type: "integer" },
     accountA: { type: "array", items: spreadLinePointDto },
     accountB: { type: "array", items: spreadLinePointDto },
-    spread: { type: "array", items: spreadLinePointDto }
+    expandSpread: { type: "array", items: spreadLinePointDto },
+    shrinkSpread: { type: "array", items: spreadLinePointDto }
   }
 };
 var orderGroupItemDto2 = {
