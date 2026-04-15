@@ -80429,7 +80429,7 @@ function isNonEmptyString(value) {
 // src/services/spread.service.ts
 var import_node_events4 = require("node:events");
 var HEARTBEAT_INTERVAL_MS = 100;
-var SPREAD_SECOND_POINT_RETENTION_SECONDS = 300;
+var SPREAD_SECOND_POINT_RETENTION_SECONDS = 360;
 var SpreadService = class extends import_node_events4.EventEmitter {
   constructor(repo, accountGroupRepo, wsManager, mt5Sdk, pushService, orderGroupService) {
     super();
@@ -80607,7 +80607,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     }
     const points = this.secondPointStore.get(subscriptionId) ?? [];
     const cutoff = Date.now() - seconds * 1e3;
-    const filtered = points.filter((point) => point.timestamp >= cutoff).slice(-seconds * 5);
+    const filtered = points.filter((point) => point.timestamp >= cutoff).slice(-seconds);
     return {
       subscriptionId,
       accountGroupId,
@@ -81011,19 +81011,30 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const accountBTimestamp = Date.parse(snapshot.accountBQuote.time);
     const timestamp = Math.max(accountATimestamp, accountBTimestamp);
     if (Number.isNaN(timestamp)) return;
+    const secondTimestamp = Math.floor(timestamp / 1e3) * 1e3;
     const point = {
-      time: new Date(timestamp).toISOString(),
-      timestamp,
+      time: new Date(secondTimestamp).toISOString(),
+      timestamp: secondTimestamp,
       accountAMid: roundNumber((snapshot.accountAQuote.bid + snapshot.accountAQuote.ask) / 2),
       accountBMid: roundNumber((snapshot.accountBQuote.bid + snapshot.accountBQuote.ask) / 2),
       expandSpread: snapshot.longSpread,
       shrinkSpread: snapshot.shortSpread
     };
     const existing = this.secondPointStore.get(subscriptionId) ?? [];
-    existing.push(point);
-    const cutoff = timestamp - SPREAD_SECOND_POINT_RETENTION_SECONDS * 1e3;
-    const retained = existing.filter((item) => item.timestamp >= cutoff).slice(-SPREAD_SECOND_POINT_RETENTION_SECONDS * 10);
-    this.secondPointStore.set(subscriptionId, retained);
+    const last = existing[existing.length - 1];
+    if (last && last.timestamp === secondTimestamp) {
+      existing[existing.length - 1] = point;
+    } else {
+      existing.push(point);
+    }
+    const cutoff = secondTimestamp - SPREAD_SECOND_POINT_RETENTION_SECONDS * 1e3;
+    while (existing.length > 0 && existing[0] && existing[0].timestamp < cutoff) {
+      existing.shift();
+    }
+    if (existing.length > SPREAD_SECOND_POINT_RETENTION_SECONDS) {
+      existing.splice(0, existing.length - SPREAD_SECOND_POINT_RETENTION_SECONDS);
+    }
+    this.secondPointStore.set(subscriptionId, existing);
   }
 };
 function updateThresholdTracker(tracker, value, threshold, operator) {
@@ -85590,7 +85601,7 @@ var spreadChartQuery = external_exports.object({
   limit: external_exports.coerce.number().int().min(10).max(500).default(120)
 });
 var spreadSecondLineSeedQuery = external_exports.object({
-  seconds: external_exports.coerce.number().int().min(10).max(300).default(120)
+  seconds: external_exports.coerce.number().int().min(10).max(360).default(360)
 });
 var spreadSubscriptionDto = {
   type: "object",
