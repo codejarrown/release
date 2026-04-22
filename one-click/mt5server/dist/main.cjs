@@ -80665,6 +80665,7 @@ function isNonEmptyString(value) {
 
 // src/services/spread.service.ts
 var import_node_events4 = require("node:events");
+var AUTO_TRADE_EXECUTION_ENABLED = false;
 var HEARTBEAT_INTERVAL_MS = 100;
 var SPREAD_SECOND_POINT_RETENTION_SECONDS = 360;
 var AUTO_TRADE_DECISION_LOG_COOLDOWN_MS = 5e3;
@@ -81443,12 +81444,15 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   async buildAutoTradeRuntimeDto(row) {
     const runtime = this.getAutoTradeRuntimeState(row);
     const group = await this.getLatestRuntimeGroup(row);
+    if (!AUTO_TRADE_EXECUTION_ENABLED) {
+      applyAutoTradeFeatureDisabledReason(runtime);
+    }
     const availabilityReason = getAutoTradeAvailabilityReason(row, group);
-    if (row.auto_trade_enabled === 1 && availabilityReason) {
+    if (row.auto_trade_enabled === 1 && AUTO_TRADE_EXECUTION_ENABLED && availabilityReason) {
       applyAutoTradeAvailabilityReason(runtime, availabilityReason);
-    } else if (row.auto_trade_enabled === 1 && runtime.paused && runtime.pauseReason) {
+    } else if (row.auto_trade_enabled === 1 && AUTO_TRADE_EXECUTION_ENABLED && runtime.paused && runtime.pauseReason) {
       applyAutoTradePauseReason(runtime, runtime.pauseReason);
-    } else if (row.auto_trade_enabled === 1) {
+    } else if (row.auto_trade_enabled === 1 && AUTO_TRADE_EXECUTION_ENABLED) {
       const singleLegSnapshot = this.getSnapshotFromRow(row, group);
       const singleLegCandidate = row.single_leg_detect_enabled === 1 ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot) : null;
       if (singleLegCandidate) {
@@ -81493,6 +81497,10 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const spreadState = this.getRuntimeState(row.id);
     state.enabled = row.auto_trade_enabled === 1;
     state.accountGroupId = row.account_group_id;
+    if (!AUTO_TRADE_EXECUTION_ENABLED) {
+      applyAutoTradeFeatureDisabledReason(state);
+      return;
+    }
     if (row.auto_trade_enabled !== 1) {
       state.locked = false;
       return;
@@ -82135,6 +82143,17 @@ function applyAutoTradePauseReason(state, reason) {
       side.lastReason = reason;
     }
     if (!side.opening && !side.closing && !isCooldownActive(side)) {
+      side.status = "idle";
+    }
+  }
+}
+function applyAutoTradeFeatureDisabledReason(state) {
+  state.locked = true;
+  state.paused = false;
+  state.pauseReason = null;
+  for (const side of [state.expand, state.shrink]) {
+    side.lastReason = "\u81EA\u52A8\u4EA4\u6613\u529F\u80FD\u5DF2\u4E34\u65F6\u5173\u95ED";
+    if (!side.opening && !side.closing) {
       side.status = "idle";
     }
   }
