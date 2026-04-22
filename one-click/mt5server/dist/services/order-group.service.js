@@ -15,14 +15,16 @@ export class OrderGroupService extends EventEmitter {
     accountRepo;
     mt5Sdk;
     pushService;
+    spreadSubscriptionRepo;
     spreadService = null;
-    constructor(orderGroupRepo, accountGroupRepo, accountRepo, mt5Sdk, pushService) {
+    constructor(orderGroupRepo, accountGroupRepo, accountRepo, mt5Sdk, pushService, spreadSubscriptionRepo) {
         super();
         this.orderGroupRepo = orderGroupRepo;
         this.accountGroupRepo = accountGroupRepo;
         this.accountRepo = accountRepo;
         this.mt5Sdk = mt5Sdk;
         this.pushService = pushService;
+        this.spreadSubscriptionRepo = spreadSubscriptionRepo;
     }
     setSpreadService(spreadService) {
         this.spreadService = spreadService;
@@ -122,16 +124,19 @@ export class OrderGroupService extends EventEmitter {
         }
         await this.orderGroupRepo.refreshFullyClosedStatus(groupId);
         const full = await this.orderGroupRepo.findByIdWithItems(groupId);
-        const dto = await this.toDto(full);
+        const openSpread = await this.computePersistedSpread(full, 'open');
+        await this.orderGroupRepo.update(groupId, { open_spread: openSpread });
+        const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
+        const dto = await this.toDto(refreshed);
         if (dto.openCount > 0) {
-            await this.pushService.broadcast({
+            void Promise.resolve(this.pushService.broadcast({
                 title: '订单组开仓通知',
                 body: [
                     `订单组: ${dto.name} (#${dto.id})`,
                     `账号组: ${dto.accountGroupName ?? '未绑定'}`,
                     `开仓数量: ${dto.openCount}`,
-                    `总盈亏: ${dto.totalProfit}`,
-                ].join('\n'),
+                    `开仓差价: ${formatOrderGroupSpread(openSpread)}`,
+                ].join('\n\n'),
                 level: 'info',
                 metadata: {
                     kind: 'order-group-open',
@@ -139,7 +144,10 @@ export class OrderGroupService extends EventEmitter {
                     name: dto.name,
                     accountGroupId: dto.accountGroupId,
                     openCount: dto.openCount,
+                    openSpread,
                 },
+            })).catch(() => {
+                // keep open result fast even if outbound notification is slow
             });
         }
         this.publishGroupState(dto);
@@ -186,8 +194,12 @@ export class OrderGroupService extends EventEmitter {
         const [, reverseResult] = await Promise.allSettled([closePromise, reversePromise]);
         await this.orderGroupRepo.refreshFullyClosedStatus(groupId);
         const full = await this.orderGroupRepo.findByIdWithItems(groupId);
-        const dto = await this.toDto(full);
-        await this.pushService.broadcast({
+        const closeSpread = await this.computePersistedSpread(full, 'close');
+        await this.orderGroupRepo.update(groupId, { close_spread: closeSpread });
+        const refreshed = await this.orderGroupRepo.findByIdWithItems(groupId);
+        const dto = await this.toDto(refreshed);
+        this.publishGroupState(dto);
+        void Promise.resolve(this.pushService.broadcast({
             title: '订单组平仓通知',
             body: [
                 `订单组: ${dto.name} (#${dto.id})`,
@@ -195,8 +207,9 @@ export class OrderGroupService extends EventEmitter {
                 `是否完全平仓: ${dto.isFullyClosed ? '是' : '否'}`,
                 `已平仓数量: ${dto.closedCount}`,
                 `未平仓数量: ${dto.openCount}`,
+                `平仓差价: ${formatOrderGroupSpread(dto.closeSpread)}`,
                 `总盈亏: ${dto.totalProfit}`,
-            ].join('\n'),
+            ].join('\n\n'),
             level: 'info',
             metadata: {
                 kind: 'order-group-close',
@@ -206,9 +219,11 @@ export class OrderGroupService extends EventEmitter {
                 openCount: dto.openCount,
                 closedCount: dto.closedCount,
                 isFullyClosed: dto.isFullyClosed,
+                closeSpread: dto.closeSpread,
             },
+        })).catch(() => {
+            // keep close result fast even if outbound notification is slow
         });
-        this.publishGroupState(dto);
         if (reverseResult.status === 'rejected') {
             throw new Error(`反向开仓失败：${reverseResult.reason instanceof Error ? reverseResult.reason.message : String(reverseResult.reason)}`);
         }
@@ -361,7 +376,7 @@ export class OrderGroupService extends EventEmitter {
             }, account.session_id);
             await this.orderGroupRepo.updateItem(item.id, {
                 status: 'closed',
-                close_price: result.openPrice ?? null,
+                close_price: result.closePrice ?? result.openPrice ?? null,
                 profit: result.profit ?? null,
                 closed_at: new Date().toISOString(),
             });
@@ -399,6 +414,8 @@ export class OrderGroupService extends EventEmitter {
             accountGroupName,
             isFullyClosed: group.is_fully_closed === 1,
             remark: group.remark,
+            openSpread: group.open_spread == null ? null : roundTo5(group.open_spread),
+            closeSpread: group.close_spread == null ? null : roundTo5(group.close_spread),
             totalProfit: Math.round(totalProfit * 100) / 100,
             openCount,
             closedCount,
@@ -417,6 +434,48 @@ export class OrderGroupService extends EventEmitter {
             groupId: dto.id,
             accountGroupId: dto.accountGroupId,
         });
+    }
+    async computePersistedSpread(group, priceField) {
+        const priceKey = priceField === 'open' ? 'open_price' : 'close_price';
+        const pricedItems = group.items.filter((item) => typeof item[priceKey] === 'number');
+        if (pricedItems.length < 2)
+            return null;
+        const spreadHint = await this.resolveSpreadHint(group.account_group_id, group.remark);
+        const accountGroup = spreadHint?.accountGroup ?? undefined;
+        const subscription = spreadHint?.subscription ?? undefined;
+        if (accountGroup && subscription) {
+            const itemA = pricedItems.find((item) => item.account_id === accountGroup.account_a_id && item.symbol === subscription.symbol_a);
+            const itemB = pricedItems.find((item) => item.id !== itemA?.id
+                && item.account_id === accountGroup.account_b_id
+                && item.symbol === subscription.symbol_b);
+            const spread = computeLegSpread(itemA, itemB, priceKey);
+            if (spread !== null)
+                return spread;
+        }
+        if (accountGroup) {
+            const itemA = pricedItems.find((item) => item.account_id === accountGroup.account_a_id);
+            const itemB = pricedItems.find((item) => item.id !== itemA?.id && item.account_id === accountGroup.account_b_id);
+            const spread = computeLegSpread(itemA, itemB, priceKey);
+            if (spread !== null)
+                return spread;
+        }
+        return computeLegSpread(pricedItems[0], pricedItems[1], priceKey);
+    }
+    async resolveSpreadHint(accountGroupId, remark) {
+        if (!accountGroupId)
+            return null;
+        const accountGroup = await this.accountGroupRepo.findById(accountGroupId);
+        if (!accountGroup)
+            return null;
+        const metadata = parseSpreadRemark(remark);
+        if (!metadata.subscriptionId || !this.spreadSubscriptionRepo) {
+            return { accountGroup, subscription: null };
+        }
+        const subscription = await this.spreadSubscriptionRepo.findById(metadata.subscriptionId);
+        if (!subscription || subscription.account_group_id !== accountGroupId) {
+            return { accountGroup, subscription: null };
+        }
+        return { accountGroup, subscription };
     }
 }
 function toItemDto(item) {
@@ -439,6 +498,25 @@ function toItemDto(item) {
         openedAt: item.opened_at,
         closedAt: item.closed_at,
     };
+}
+function formatOrderGroupSpread(value) {
+    if (value === null)
+        return '—';
+    return String(roundTo5(value));
+}
+function computeLegSpread(itemA, itemB, priceKey) {
+    if (!itemA || !itemB || itemA.id === itemB.id || itemA.lots <= 0) {
+        return null;
+    }
+    const priceA = itemA[priceKey];
+    const priceB = itemB[priceKey];
+    if (typeof priceA !== 'number' || typeof priceB !== 'number') {
+        return null;
+    }
+    return roundTo5(priceA - (itemB.lots / itemA.lots) * priceB);
+}
+function roundTo5(value) {
+    return Math.round(value * 100000) / 100000;
 }
 function parseSpreadRemark(remark) {
     if (!remark) {

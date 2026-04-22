@@ -95,6 +95,8 @@ const orderGroupDto = {
         accountGroupName: { type: 'string', nullable: true },
         isFullyClosed: { type: 'boolean' },
         remark: { type: 'string', nullable: true },
+        openSpread: { type: 'number', nullable: true },
+        closeSpread: { type: 'number', nullable: true },
         totalProfit: { type: 'number' },
         openCount: { type: 'integer' },
         closedCount: { type: 'integer' },

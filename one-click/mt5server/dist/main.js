@@ -61,7 +61,7 @@ async function main() {
     registerAccountRoutes(app, ctx.services.account);
     registerTradingRoutes(app, ctx.services.account, ctx.mt5Sdk);
     registerPositionRoutes(app, ctx.services.account, ctx.mt5Sdk);
-    registerStreamRoutes(app, ctx.wsManager, ctx.services.spread, ctx.services.orderGroup, ctx.realtime.app);
+    registerStreamRoutes(app, ctx.wsManager, ctx.services.account, ctx.services.spread, ctx.services.orderGroup, ctx.realtime.app);
     registerPushRoutes(app, ctx.services.push);
     registerAccountGroupRoutes(app, ctx.services.accountGroup);
     registerOrderGroupRoutes(app, ctx.services.orderGroup);

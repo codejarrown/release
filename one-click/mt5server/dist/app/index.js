@@ -8,6 +8,7 @@ import { PushChannelRepository } from '../db/repositories/push-channel.repositor
 import { AccountGroupRepository } from '../db/repositories/account-group.repository.js';
 import { OrderGroupRepository } from '../db/repositories/order-group.repository.js';
 import { SpreadSubscriptionRepository } from '../db/repositories/spread-subscription.repository.js';
+import { AutoTradeLogRepository } from '../db/repositories/auto-trade-log.repository.js';
 import { AccountService } from '../services/account.service.js';
 import { AccountGroupService } from '../services/account-group.service.js';
 import { OrderGroupService } from '../services/order-group.service.js';
@@ -35,13 +36,14 @@ export async function buildAppContext(config) {
         pushChannel: new PushChannelRepository(db),
         accountGroup: new AccountGroupRepository(db),
         spreadSubscription: new SpreadSubscriptionRepository(db),
+        autoTradeLog: new AutoTradeLogRepository(db),
         orderGroup: new OrderGroupRepository(db),
     };
     const pushService = new PushService(repos.pushChannel, config.ACCOUNT_ENCRYPTION_KEY);
     const wsManager = new WsConnectionManager(mt5Sdk, config.MT5_WS_BASE_URL);
     const realtimeApp = new RealtimeApp();
-    const orderGroupService = new OrderGroupService(repos.orderGroup, repos.accountGroup, repos.mt5Account, mt5Sdk, pushService);
-    const spreadService = new SpreadService(repos.spreadSubscription, repos.accountGroup, wsManager, mt5Sdk, pushService, orderGroupService);
+    const orderGroupService = new OrderGroupService(repos.orderGroup, repos.accountGroup, repos.mt5Account, mt5Sdk, pushService, repos.spreadSubscription);
+    const spreadService = new SpreadService(repos.spreadSubscription, repos.autoTradeLog, repos.accountGroup, wsManager, mt5Sdk, pushService, orderGroupService);
     const accountService = new AccountService(repos.mt5Account, mt5Sdk, config.ACCOUNT_ENCRYPTION_KEY);
     const accountHeartbeatService = new AccountHeartbeatService(accountService, wsManager, realtimeApp);
     orderGroupService.setSpreadService(spreadService);

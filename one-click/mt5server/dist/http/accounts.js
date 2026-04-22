@@ -74,6 +74,26 @@ const accountPingResponseSchema = dataResponse({
         port: { type: 'integer' },
     },
 });
+const accountInfoResponseSchema = dataResponse({
+    type: 'object',
+    properties: {
+        accountId: { type: 'integer' },
+        sessionId: { type: 'string' },
+        login: { type: 'integer' },
+        userName: { type: 'string' },
+        balance: { type: 'number' },
+        profit: { type: 'number', nullable: true },
+        equity: { type: 'number', nullable: true },
+        margin: { type: 'number', nullable: true },
+        freeMargin: { type: 'number', nullable: true },
+        marginLevel: { type: 'number', nullable: true },
+        credit: { type: 'number', nullable: true },
+        leverage: { type: 'number', nullable: true },
+        country: { type: 'string', nullable: true },
+        email: { type: 'string', nullable: true },
+        accountCurrency: { type: 'string', nullable: true },
+    },
+});
 const accountDto = {
     type: 'object',
     properties: {
@@ -251,6 +271,25 @@ export function registerAccountRoutes(app, accountService) {
     }, async (request) => {
         const id = parseId(request.params.id);
         const result = await accountService.getPing(id);
+        return { data: result };
+    });
+    app.get('/api/v1/accounts/:id/info', {
+        schema: {
+            tags: ['Accounts'],
+            summary: '获取当前账号资金信息',
+            description: '基于账号当前 sessionId 返回 MT5 会话资金信息，包括余额、盈亏、净值、保证金、可用保证金、杠杆等。',
+            params: idParam(),
+            response: {
+                200: accountInfoResponseSchema,
+                404: errorResponse,
+                409: errorResponse,
+                502: errorResponse,
+                503: errorResponse,
+            },
+        },
+    }, async (request) => {
+        const id = parseId(request.params.id);
+        const result = await accountService.getAccountInfo(id);
         return { data: result };
     });
     // ---- Symbols / Market ----

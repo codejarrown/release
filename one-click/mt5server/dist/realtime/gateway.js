@@ -1,6 +1,32 @@
-export function registerRealtimeGateway(app, wsManager, spreadService, orderGroupService, realtimeApp) {
+export function registerRealtimeGateway(app, wsManager, accountService, spreadService, orderGroupService, realtimeApp) {
     const clients = new Set();
     let messageSeq = 0;
+    let accountInfoBroadcastInFlight = null;
+    async function broadcastAccountInfoSnapshot() {
+        if (clients.size === 0)
+            return;
+        const accounts = await accountService.listConnectedAccountInfos();
+        const message = createOutboundMessage('accountInfoSnapshot', { accounts });
+        for (const client of clients) {
+            if (client.ws.readyState === client.ws.OPEN) {
+                client.ws.send(message);
+            }
+        }
+    }
+    function scheduleAccountInfoBroadcast() {
+        if (accountInfoBroadcastInFlight)
+            return;
+        accountInfoBroadcastInFlight = broadcastAccountInfoSnapshot()
+            .catch(() => {
+            // ignore account info polling failures to keep WS stream healthy
+        })
+            .finally(() => {
+            accountInfoBroadcastInFlight = null;
+        });
+    }
+    const accountInfoTimer = setInterval(() => {
+        scheduleAccountInfoBroadcast();
+    }, 2000);
     function createOutboundMessage(type, payload) {
         messageSeq += 1;
         return JSON.stringify({
@@ -47,21 +73,7 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
             }
         }
     }
-    function handleSpreadHeartbeat(payload) {
-        const message = createOutboundMessage('spreadHeartbeat', {
-            subscriptionId: payload.subscriptionId,
-            accountGroupId: payload.accountGroupId,
-            accountAHeartbeat: payload.accountAHeartbeat,
-            accountBHeartbeat: payload.accountBHeartbeat,
-        });
-        for (const client of clients) {
-            if (!client.subscribedSpreadIds.has(payload.subscriptionId))
-                continue;
-            if (client.ws.readyState === client.ws.OPEN) {
-                client.ws.send(message);
-            }
-        }
-    }
+    // spreadHeartbeat merged into spreadUpdate.
     ;
     [
         'disconnected',
@@ -85,14 +97,6 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
         });
     });
     if (realtimeApp) {
-        realtimeApp.on('orderUpdate', (payload) => {
-            const message = createOutboundMessage('orderUpdate', payload);
-            for (const client of clients) {
-                if (client.ws.readyState === client.ws.OPEN) {
-                    client.ws.send(message);
-                }
-            }
-        });
         realtimeApp.on('orderUpdateSnapshot', (payload) => {
             const message = createOutboundMessage('orderUpdateSnapshot', payload);
             for (const client of clients) {
@@ -120,7 +124,6 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
             }
         });
         realtimeApp.on('spreadUpdate', handleSpreadUpdate);
-        realtimeApp.on('spreadHeartbeat', handleSpreadHeartbeat);
         realtimeApp.on('spreadRuntimeState', (payload) => {
             for (const client of clients) {
                 if (payload.runtimeStarted) {
@@ -145,7 +148,22 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
             }
         });
         spreadService.on('spreadHeartbeat', (payload) => {
-            const message = createOutboundMessage('spreadHeartbeat', payload);
+            const snapshot = spreadService.getSnapshot(payload.subscriptionId);
+            const message = createOutboundMessage('spreadUpdate', {
+                subscriptionId: payload.subscriptionId,
+                accountGroupId: payload.accountGroupId,
+                snapshot: snapshot
+                    ? {
+                        ...snapshot,
+                        accountAQuote: snapshot.accountAQuote
+                            ? { ...snapshot.accountAQuote, heartbeat: payload.accountAHeartbeat }
+                            : null,
+                        accountBQuote: snapshot.accountBQuote
+                            ? { ...snapshot.accountBQuote, heartbeat: payload.accountBHeartbeat }
+                            : null,
+                    }
+                    : null,
+            });
             for (const client of clients) {
                 if (!client.subscribedSpreadIds.has(payload.subscriptionId))
                     continue;
@@ -165,14 +183,6 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
                 sendSpreadSubscribed(client);
             }
         });
-        wsManager.on('orderUpdate', (payload) => {
-            const message = createOutboundMessage('orderUpdate', payload);
-            for (const client of clients) {
-                if (client.ws.readyState === client.ws.OPEN) {
-                    client.ws.send(message);
-                }
-            }
-        });
         wsManager.on('orderUpdateSnapshot', (payload) => {
             const message = createOutboundMessage('orderUpdateSnapshot', payload);
             for (const client of clients) {
@@ -189,6 +199,9 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
                 client.ws.send(message);
             }
         }
+    });
+    app.addHook('onClose', async () => {
+        clearInterval(accountInfoTimer);
     });
     app.get('/api/v1/stream/ws', {
         websocket: true,
@@ -261,8 +274,7 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
                 '',
                 '价差订阅推送消息：',
                 '- `spreadSnapshot`：订阅成功后立即返回一次当前快照',
-                '- `spreadUpdate`：A / B 任一价格变化时立即推送',
-                '- `spreadHeartbeat`：每 100ms 推送一次轻量心跳，只返回 A / B 两腿的 heartbeat 计数',
+                '- `spreadUpdate`：A / B 任一价格变化时立即推送（含 A/B heartbeat，已合并心跳消息）',
                 '- `spreadOrderResult`：通过 WS 下发扩/缩交易命令后的同步结果回包',
                 '- `orderGroupCloseResult`：通过 WS 下发单个订单组平仓命令后的同步结果回包',
                 '- `orderGroupCloseManyResult`：通过 WS 下发批量订单组平仓命令后的同步结果回包',
@@ -288,6 +300,7 @@ export function registerRealtimeGateway(app, wsManager, spreadService, orderGrou
             }
             sendOrderGroupSnapshot(state);
         }
+        scheduleAccountInfoBroadcast();
         const runtimeSubscriptionIds = realtimeApp?.getRuntimeSubscriptionIds()
             ?? spreadService.getRuntimeSubscriptionIds();
         for (const subscriptionId of runtimeSubscriptionIds) {

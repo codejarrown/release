@@ -28,7 +28,8 @@ export class RealtimeBus extends EventEmitter {
         this.emit('spreadUpdate', payload);
     }
     emitSpreadHeartbeat(payload) {
-        this.emit('spreadHeartbeat', payload);
+        // Merge heartbeat into spreadUpdate to reduce message types.
+        this.emit('spreadUpdate', payload);
     }
     emitSpreadRuntimeState(payload) {
         this.emit('spreadRuntimeState', payload);

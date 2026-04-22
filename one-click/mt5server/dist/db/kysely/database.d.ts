@@ -5,6 +5,7 @@ export interface Database {
     push_channels: PushChannelTable;
     account_groups: AccountGroupTable;
     spread_subscriptions: SpreadSubscriptionTable;
+    auto_trade_logs: AutoTradeLogTable;
     order_groups: OrderGroupTable;
     order_group_items: OrderGroupItemTable;
 }
@@ -89,12 +90,51 @@ export interface SpreadSubscriptionTable {
     notify_contract_threshold: number | null;
     notify_stability_seconds: Generated<number>;
     cooldown_seconds: Generated<number>;
+    auto_trade_enabled: Generated<number>;
+    auto_open_expand_enabled: Generated<number>;
+    auto_open_shrink_enabled: Generated<number>;
+    target_expand_groups: Generated<number>;
+    target_shrink_groups: Generated<number>;
+    auto_open_expand_threshold: number | null;
+    auto_open_shrink_threshold: number | null;
+    auto_open_stability_seconds: Generated<number>;
+    auto_open_cooldown_seconds: Generated<number>;
+    auto_close_enabled: Generated<number>;
+    auto_close_expand_enabled: Generated<number>;
+    auto_close_shrink_enabled: Generated<number>;
+    auto_close_expand_protection: number | null;
+    auto_close_shrink_protection: number | null;
+    auto_close_batch_count: Generated<number>;
+    auto_close_cooldown_seconds: Generated<number>;
     created_at: Generated<string>;
     updated_at: Generated<string>;
 }
 export type SpreadSubscription = Selectable<SpreadSubscriptionTable>;
 export type NewSpreadSubscription = Insertable<SpreadSubscriptionTable>;
 export type SpreadSubscriptionUpdate = Updateable<SpreadSubscriptionTable>;
+export type AutoTradeLogDirection = 'expand' | 'shrink';
+export type AutoTradeLogLevel = 'info' | 'warn' | 'error';
+export type AutoTradeLogPhase = 'decision' | 'execution' | 'runtime';
+export interface AutoTradeLogTable {
+    id: Generated<number>;
+    account_group_id: number;
+    subscription_id: number;
+    phase: AutoTradeLogPhase;
+    action: string;
+    direction: AutoTradeLogDirection | null;
+    level: AutoTradeLogLevel;
+    reason: string | null;
+    runtime_state: string | null;
+    long_spread: number | null;
+    short_spread: number | null;
+    long_stable_seconds: number | null;
+    short_stable_seconds: number | null;
+    request_id: string | null;
+    metadata: string | null;
+    created_at: Generated<string>;
+}
+export type AutoTradeLog = Selectable<AutoTradeLogTable>;
+export type NewAutoTradeLog = Insertable<AutoTradeLogTable>;
 export type OrderGroupItemStatus = 'pending' | 'open' | 'closed' | 'failed';
 export interface OrderGroupTable {
     id: Generated<number>;
@@ -102,6 +142,8 @@ export interface OrderGroupTable {
     account_group_id: number | null;
     is_fully_closed: Generated<number>;
     remark: string | null;
+    open_spread: number | null;
+    close_spread: number | null;
     created_at: Generated<string>;
     updated_at: Generated<string>;
 }

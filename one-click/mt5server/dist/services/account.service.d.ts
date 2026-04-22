@@ -34,10 +34,22 @@ export interface AccountPingDto {
     host: string;
     port: number;
 }
-export interface AccountPingDto {
-    latencyMs: number;
-    host: string;
-    port: number;
+export interface AccountInfoDto {
+    accountId: number;
+    sessionId: string;
+    login: number;
+    userName: string;
+    balance: number;
+    profit: number | null;
+    equity: number | null;
+    margin: number | null;
+    freeMargin: number | null;
+    marginLevel: number | null;
+    credit: number | null;
+    leverage: number | null;
+    country: string | null;
+    email: string | null;
+    accountCurrency: string | null;
 }
 export interface CreateAccountInput {
     login: number;
@@ -88,6 +100,8 @@ export declare class AccountService {
     disconnect(id: number): Promise<void>;
     listSubscriptions(accountId: number): Promise<string[]>;
     getPing(accountId: number): Promise<AccountPingDto>;
+    getAccountInfo(accountId: number): Promise<AccountInfoDto>;
+    listConnectedAccountInfos(): Promise<AccountInfoDto[]>;
     addSubscriptions(accountId: number, symbols: string[]): Promise<string[]>;
     removeSubscriptions(accountId: number, symbols: string[]): Promise<string[]>;
     resetSubscriptions(accountId: number): Promise<string[]>;

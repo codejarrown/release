@@ -23,6 +23,22 @@ const spreadSubscriptionBody = z.object({
     notifyShortThreshold: z.number().min(0).optional(),
     notifyStabilitySeconds: z.number().int().min(0).optional(),
     cooldownSeconds: z.number().int().min(0).optional(),
+    autoTradeEnabled: z.boolean().optional(),
+    autoOpenExpandEnabled: z.boolean().optional(),
+    autoOpenShrinkEnabled: z.boolean().optional(),
+    targetExpandGroups: z.number().int().min(0).optional(),
+    targetShrinkGroups: z.number().int().min(0).optional(),
+    autoOpenExpandThreshold: z.number().min(0).nullable().optional(),
+    autoOpenShrinkThreshold: z.number().min(0).nullable().optional(),
+    autoOpenStabilitySeconds: z.number().int().min(0).optional(),
+    autoOpenCooldownSeconds: z.number().int().min(0).optional(),
+    autoCloseEnabled: z.boolean().optional(),
+    autoCloseExpandEnabled: z.boolean().optional(),
+    autoCloseShrinkEnabled: z.boolean().optional(),
+    autoCloseExpandProtection: z.number().min(0).nullable().optional(),
+    autoCloseShrinkProtection: z.number().min(0).nullable().optional(),
+    autoCloseBatchCount: z.number().int().min(1).optional(),
+    autoCloseCooldownSeconds: z.number().int().min(0).optional(),
 });
 const updateSpreadSubscriptionBody = z.object({
     name: z.string().min(1).optional(),
@@ -37,6 +53,32 @@ const updateSpreadSubscriptionBody = z.object({
     notifyShortThreshold: z.number().min(0).nullable().optional(),
     notifyStabilitySeconds: z.number().int().min(0).optional(),
     cooldownSeconds: z.number().int().min(0).optional(),
+    autoTradeEnabled: z.boolean().optional(),
+    autoOpenExpandEnabled: z.boolean().optional(),
+    autoOpenShrinkEnabled: z.boolean().optional(),
+    targetExpandGroups: z.number().int().min(0).optional(),
+    targetShrinkGroups: z.number().int().min(0).optional(),
+    autoOpenExpandThreshold: z.number().min(0).nullable().optional(),
+    autoOpenShrinkThreshold: z.number().min(0).nullable().optional(),
+    autoOpenStabilitySeconds: z.number().int().min(0).optional(),
+    autoOpenCooldownSeconds: z.number().int().min(0).optional(),
+    autoCloseEnabled: z.boolean().optional(),
+    autoCloseExpandEnabled: z.boolean().optional(),
+    autoCloseShrinkEnabled: z.boolean().optional(),
+    autoCloseExpandProtection: z.number().min(0).nullable().optional(),
+    autoCloseShrinkProtection: z.number().min(0).nullable().optional(),
+    autoCloseBatchCount: z.number().int().min(1).optional(),
+    autoCloseCooldownSeconds: z.number().int().min(0).optional(),
+});
+const autoTradeLogQuery = z.object({
+    accountGroupId: z.coerce.number().int().positive().optional(),
+    subscriptionId: z.coerce.number().int().positive().optional(),
+    phase: z.enum(['decision', 'execution', 'runtime']).optional(),
+    level: z.enum(['info', 'warn', 'error']).optional(),
+    direction: z.enum(['expand', 'shrink']).optional(),
+    action: z.string().min(1).optional(),
+    page: z.coerce.number().int().min(1).default(1),
+    pageSize: z.coerce.number().int().min(1).max(200).default(50),
 });
 const placeSpreadOrderBody = z.object({
     subscriptionId: z.number().int().positive(),
@@ -54,6 +96,9 @@ const placeSpreadOrderBody = z.object({
 const spreadChartQuery = z.object({
     timeframe: z.coerce.number().int().refine((value) => [1, 5, 15].includes(value), 'timeframe 必须为 1、5 或 15').default(1),
     limit: z.coerce.number().int().min(10).max(500).default(120),
+});
+const spreadSecondLineSeedQuery = z.object({
+    seconds: z.coerce.number().int().min(10).max(360).default(360),
 });
 const spreadSubscriptionDto = {
     type: 'object',
@@ -73,8 +118,78 @@ const spreadSubscriptionDto = {
         notifyShortThreshold: { type: 'number', nullable: true },
         notifyStabilitySeconds: { type: 'integer' },
         cooldownSeconds: { type: 'integer' },
+        autoTrade: {
+            type: 'object',
+            properties: {
+                enabled: { type: 'boolean' },
+                autoOpenExpandEnabled: { type: 'boolean' },
+                autoOpenShrinkEnabled: { type: 'boolean' },
+                targetExpandGroups: { type: 'integer' },
+                targetShrinkGroups: { type: 'integer' },
+                autoOpenExpandThreshold: { type: 'number', nullable: true },
+                autoOpenShrinkThreshold: { type: 'number', nullable: true },
+                autoOpenStabilitySeconds: { type: 'integer' },
+                autoOpenCooldownSeconds: { type: 'integer' },
+                autoCloseEnabled: { type: 'boolean' },
+                autoCloseExpandEnabled: { type: 'boolean' },
+                autoCloseShrinkEnabled: { type: 'boolean' },
+                autoCloseExpandProtection: { type: 'number', nullable: true },
+                autoCloseShrinkProtection: { type: 'number', nullable: true },
+                autoCloseBatchCount: { type: 'integer' },
+                autoCloseCooldownSeconds: { type: 'integer' },
+            },
+        },
         createdAt: { type: 'string' },
         updatedAt: { type: 'string' },
+    },
+};
+const autoTradeLogDto = {
+    type: 'object',
+    properties: {
+        id: { type: 'integer' },
+        accountGroupId: { type: 'integer' },
+        subscriptionId: { type: 'integer' },
+        phase: { type: 'string', enum: ['decision', 'execution', 'runtime'] },
+        action: { type: 'string' },
+        direction: { type: 'string', enum: ['expand', 'shrink'], nullable: true },
+        level: { type: 'string', enum: ['info', 'warn', 'error'] },
+        reason: { type: 'string', nullable: true },
+        runtimeState: { type: 'string', nullable: true },
+        longSpread: { type: 'number', nullable: true },
+        shortSpread: { type: 'number', nullable: true },
+        longStableSeconds: { type: 'number', nullable: true },
+        shortStableSeconds: { type: 'number', nullable: true },
+        requestId: { type: 'string', nullable: true },
+        metadata: { type: 'object', nullable: true, additionalProperties: true },
+        createdAt: { type: 'string' },
+    },
+};
+const autoTradeRuntimeSideDto = {
+    type: 'object',
+    properties: {
+        status: { type: 'string', enum: ['idle', 'opening', 'open_cooldown', 'closing', 'close_cooldown'] },
+        openArmed: { type: 'boolean' },
+        opening: { type: 'boolean' },
+        closing: { type: 'boolean' },
+        cooldownRemainingSeconds: { type: 'number' },
+        lastActionAt: { type: 'string', nullable: true },
+        lastOpenAt: { type: 'string', nullable: true },
+        lastCloseAt: { type: 'string', nullable: true },
+        lastReason: { type: 'string', nullable: true },
+        lastError: { type: 'string', nullable: true },
+        currentGroupCount: { type: 'integer' },
+        targetGroupCount: { type: 'integer' },
+    },
+};
+const autoTradeRuntimeDto = {
+    type: 'object',
+    properties: {
+        subscriptionId: { type: 'integer' },
+        accountGroupId: { type: 'integer' },
+        enabled: { type: 'boolean' },
+        locked: { type: 'boolean' },
+        expand: autoTradeRuntimeSideDto,
+        shrink: autoTradeRuntimeSideDto,
     },
 };
 const spreadQuoteDto = {
@@ -98,8 +213,8 @@ const spreadSnapshotDto = {
         status: { type: 'string', enum: ['ready', 'waiting_quote', 'disabled'] },
         accountAQuote: spreadQuoteDto,
         accountBQuote: spreadQuoteDto,
-        longSpread: { type: 'number', nullable: true, description: 'a.ask - b.bid' },
-        shortSpread: { type: 'number', nullable: true, description: 'a.bid - b.ask' },
+        longSpread: { type: 'number', nullable: true, description: 'a.ask - (lotsB/lotsA) * b.bid；lotsB 为空时按 lotsA 处理' },
+        shortSpread: { type: 'number', nullable: true, description: 'a.bid - (lotsB/lotsA) * b.ask；lotsB 为空时按 lotsA 处理' },
         stability: {
             type: 'object',
             properties: {
@@ -207,6 +322,25 @@ const spreadChartDto = {
         },
     },
 };
+const spreadLinePointDto = {
+    type: 'object',
+    properties: {
+        time: { type: 'string' },
+        value: { type: 'number' },
+    },
+};
+const spreadSecondLineSeedDto = {
+    type: 'object',
+    properties: {
+        subscriptionId: { type: 'integer' },
+        accountGroupId: { type: 'integer' },
+        seconds: { type: 'integer' },
+        accountA: { type: 'array', items: spreadLinePointDto },
+        accountB: { type: 'array', items: spreadLinePointDto },
+        expandSpread: { type: 'array', items: spreadLinePointDto },
+        shrinkSpread: { type: 'array', items: spreadLinePointDto },
+    },
+};
 const orderGroupItemDto = {
     type: 'object',
     properties: {
@@ -238,6 +372,8 @@ const orderGroupDto = {
         accountGroupName: { type: 'string', nullable: true },
         isFullyClosed: { type: 'boolean' },
         remark: { type: 'string', nullable: true },
+        openSpread: { type: 'number', nullable: true },
+        closeSpread: { type: 'number', nullable: true },
         totalProfit: { type: 'number' },
         openCount: { type: 'integer' },
         closedCount: { type: 'integer' },
@@ -320,6 +456,58 @@ export function registerSpreadRoutes(app, spreadService) {
         await spreadService.delete(accountGroupId, subscriptionId);
         return reply.status(204).send();
     });
+    app.get('/api/v1/auto-trade/logs', {
+        schema: {
+            tags: ['Spread'],
+            summary: '自动交易日志列表',
+            querystring: zToSchema(autoTradeLogQuery),
+            response: {
+                200: {
+                    type: 'object',
+                    properties: {
+                        data: { type: 'array', items: autoTradeLogDto },
+                        total: { type: 'integer' },
+                        page: { type: 'integer' },
+                        pageSize: { type: 'integer' },
+                    },
+                },
+                400: errorResponse,
+            },
+        },
+    }, async (request) => {
+        const parsed = autoTradeLogQuery.safeParse(request.query);
+        if (!parsed.success) {
+            throw new ValidationError('Invalid querystring', parsed.error.flatten().fieldErrors);
+        }
+        const result = await spreadService.listAutoTradeLogs(parsed.data);
+        return {
+            data: result.items,
+            total: result.total,
+            page: result.page,
+            pageSize: result.pageSize,
+        };
+    });
+    app.get('/api/v1/auto-trade/runtime', {
+        schema: {
+            tags: ['Spread'],
+            summary: '自动交易运行态列表',
+            querystring: {
+                type: 'object',
+                properties: {
+                    accountGroupId: { type: 'integer', minimum: 1 },
+                },
+            },
+            response: {
+                200: { type: 'object', properties: { data: { type: 'array', items: autoTradeRuntimeDto } } },
+            },
+        },
+    }, async (request) => {
+        const accountGroupIdRaw = request.query.accountGroupId;
+        const accountGroupId = accountGroupIdRaw === undefined
+            ? undefined
+            : parseId(String(accountGroupIdRaw), 'accountGroupId');
+        return { data: await spreadService.listAutoTradeRuntime(accountGroupId) };
+    });
     app.get('/api/v1/account-groups/:accountGroupId/spread-panel', {
         schema: {
             tags: ['Spread'],
@@ -356,6 +544,30 @@ export function registerSpreadRoutes(app, spreadService) {
         }
         return {
             data: await spreadService.getChart(accountGroupId, subscriptionId, parsed.data.timeframe, parsed.data.limit),
+        };
+    });
+    app.get('/api/v1/account-groups/:accountGroupId/spread-subscriptions/:subscriptionId/second-line-seed', {
+        schema: {
+            tags: ['Spread'],
+            summary: '获取秒级折线图 seed 数据',
+            description: '返回最近 N 秒的 A/B 标的与差价点序列，供前端首次渲染秒级折线图；后续继续复用 spreadUpdate 增量更新。',
+            params: subscriptionIdParam,
+            querystring: zToSchema(spreadSecondLineSeedQuery),
+            response: {
+                200: { type: 'object', properties: { data: spreadSecondLineSeedDto } },
+                400: errorResponse,
+                404: errorResponse,
+            },
+        },
+    }, async (request) => {
+        const accountGroupId = parseId(request.params.accountGroupId, 'accountGroupId');
+        const subscriptionId = parseId(request.params.subscriptionId, 'subscriptionId');
+        const parsed = spreadSecondLineSeedQuery.safeParse(request.query);
+        if (!parsed.success) {
+            throw new ValidationError('Invalid querystring', parsed.error.flatten().fieldErrors);
+        }
+        return {
+            data: await spreadService.getSecondLineSeed(accountGroupId, subscriptionId, parsed.data.seconds),
         };
     });
     app.post('/api/v1/account-groups/:accountGroupId/spread-panel/order', {

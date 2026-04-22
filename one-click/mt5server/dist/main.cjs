@@ -15408,16 +15408,16 @@ var require_validate = __commonJS({
         const matches = RELATIVE_JSON_POINTER.exec($data);
         if (!matches)
           throw new Error(`Invalid JSON-pointer: ${$data}`);
-        const up13 = +matches[1];
+        const up15 = +matches[1];
         jsonPointer = matches[2];
         if (jsonPointer === "#") {
-          if (up13 >= dataLevel)
-            throw new Error(errorMsg("property/index", up13));
-          return dataPathArr[dataLevel - up13];
+          if (up15 >= dataLevel)
+            throw new Error(errorMsg("property/index", up15));
+          return dataPathArr[dataLevel - up15];
         }
-        if (up13 > dataLevel)
-          throw new Error(errorMsg("data", up13));
-        data = dataNames[dataLevel - up13];
+        if (up15 > dataLevel)
+          throw new Error(errorMsg("data", up15));
+        data = dataNames[dataLevel - up15];
         if (!jsonPointer)
           return data;
       }
@@ -15430,8 +15430,8 @@ var require_validate = __commonJS({
         }
       }
       return expr;
-      function errorMsg(pointerType, up13) {
-        return `Cannot access ${pointerType} ${up13} levels up, current level is ${dataLevel}`;
+      function errorMsg(pointerType, up15) {
+        return `Cannot access ${pointerType} ${up15} levels up, current level is ${dataLevel}`;
       }
     }
     exports2.getData = getData;
@@ -78523,6 +78523,124 @@ async function up12(db) {
 async function down12(_db) {
 }
 
+// src/db/migrations/013_auto_trade.ts
+var auto_trade_exports = {};
+__export(auto_trade_exports, {
+  down: () => down13,
+  up: () => up13
+});
+async function addColumnIfMissing(db, columnNames, name, add) {
+  if (columnNames.has(name)) return;
+  await add();
+}
+async function up13(db) {
+  const columns = await sql`PRAGMA table_info(spread_subscriptions)`.execute(db);
+  const columnNames = new Set(columns.rows.map((row) => row.name));
+  await addColumnIfMissing(db, columnNames, "auto_trade_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_trade_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_expand_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_expand_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_shrink_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_shrink_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "target_expand_groups", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("target_expand_groups", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "target_shrink_groups", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("target_shrink_groups", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_expand_threshold", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_expand_threshold", "real").execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_shrink_threshold", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_shrink_threshold", "real").execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_stability_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_stability_seconds", "integer", (col) => col.notNull().defaultTo(3)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_open_cooldown_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_open_cooldown_seconds", "integer", (col) => col.notNull().defaultTo(15)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_expand_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_expand_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_shrink_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_shrink_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_expand_protection", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_expand_protection", "real").execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_shrink_protection", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_shrink_protection", "real").execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_batch_count", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_batch_count", "integer", (col) => col.notNull().defaultTo(1)).execute();
+  });
+  await addColumnIfMissing(db, columnNames, "auto_close_cooldown_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_cooldown_seconds", "integer", (col) => col.notNull().defaultTo(5)).execute();
+  });
+  await sql`
+    UPDATE spread_subscriptions
+    SET auto_open_expand_threshold = COALESCE(auto_open_expand_threshold, notify_expand_threshold),
+        auto_open_shrink_threshold = COALESCE(auto_open_shrink_threshold, notify_contract_threshold),
+        auto_open_stability_seconds = COALESCE(auto_open_stability_seconds, notify_stability_seconds, 3)
+  `.execute(db);
+  await db.schema.createTable("auto_trade_logs").ifNotExists().addColumn("id", "integer", (col) => col.primaryKey().autoIncrement()).addColumn("account_group_id", "integer", (col) => col.notNull().references("account_groups.id").onDelete("cascade")).addColumn("subscription_id", "integer", (col) => col.notNull().references("spread_subscriptions.id").onDelete("cascade")).addColumn("phase", "text", (col) => col.notNull()).addColumn("action", "text", (col) => col.notNull()).addColumn("direction", "text").addColumn("level", "text", (col) => col.notNull().defaultTo("info")).addColumn("reason", "text").addColumn("runtime_state", "text").addColumn("long_spread", "real").addColumn("short_spread", "real").addColumn("long_stable_seconds", "real").addColumn("short_stable_seconds", "real").addColumn("request_id", "text").addColumn("metadata", "text").addColumn("created_at", "text", (col) => col.notNull()).execute();
+  await db.schema.createIndex("auto_trade_logs_subscription_created_at_idx").ifNotExists().on("auto_trade_logs").columns(["subscription_id", "created_at"]).execute();
+  await db.schema.createIndex("auto_trade_logs_account_group_created_at_idx").ifNotExists().on("auto_trade_logs").columns(["account_group_id", "created_at"]).execute();
+}
+async function down13(_db) {
+}
+
+// src/db/migrations/014_auto_trade_single_leg.ts
+var auto_trade_single_leg_exports = {};
+__export(auto_trade_single_leg_exports, {
+  down: () => down14,
+  up: () => up14
+});
+async function addColumnIfMissing2(db, columnNames, name, add) {
+  if (columnNames.has(name)) return;
+  await add();
+}
+async function up14(db) {
+  const columns = await sql`PRAGMA table_info(spread_subscriptions)`.execute(db);
+  const columnNames = new Set(columns.rows.map((row) => row.name));
+  await addColumnIfMissing2(db, columnNames, "single_leg_detect_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_detect_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "single_leg_timeout_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_timeout_seconds", "integer", (col) => col.notNull().defaultTo(5)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "single_leg_price_drift_threshold", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_price_drift_threshold", "real").execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "auto_close_single_leg_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_single_leg_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "auto_close_single_leg_cooldown_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_single_leg_cooldown_seconds", "integer", (col) => col.notNull().defaultTo(5)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "auto_close_single_leg_max_retries", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_single_leg_max_retries", "integer", (col) => col.notNull().defaultTo(1)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "single_leg_notify_enabled", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_notify_enabled", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "single_leg_notify_channel_ids", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_notify_channel_ids", "text").execute();
+  });
+  await addColumnIfMissing2(db, columnNames, "single_leg_notify_levels", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("single_leg_notify_levels", "text").execute();
+  });
+}
+async function down14(_db) {
+}
+
 // src/db/migrator.ts
 var migrations = {
   "001_initial": initial_exports,
@@ -78536,7 +78654,9 @@ var migrations = {
   "009_spread_subscription_thresholds": spread_subscription_thresholds_exports,
   "010_spread_subscription_lots": spread_subscription_lots_exports,
   "011_account_reconnect_fields": account_reconnect_fields_exports,
-  "012_order_group_spreads": order_group_spreads_exports
+  "012_order_group_spreads": order_group_spreads_exports,
+  "013_auto_trade": auto_trade_exports,
+  "014_auto_trade_single_leg": auto_trade_single_leg_exports
 };
 var StaticMigrationProvider = class {
   async getMigrations() {
@@ -78707,13 +78827,13 @@ var OrderGroupRepository = class {
     if (filter?.isFullyClosed !== void 0) {
       query = query.where("is_fully_closed", "=", filter.isFullyClosed ? 1 : 0);
     }
-    if (filter?.createdDateFrom) {
-      query = query.where(sql`substr(created_at, 1, 10)`, ">=", filter.createdDateFrom);
+    if (filter?.createdAtFrom) {
+      query = query.where(sql`julianday(created_at) >= julianday(${filter.createdAtFrom})`);
     }
-    if (filter?.createdDateTo) {
-      query = query.where(sql`substr(created_at, 1, 10)`, "<=", filter.createdDateTo);
+    if (filter?.createdAtToExclusive) {
+      query = query.where(sql`julianday(created_at) < julianday(${filter.createdAtToExclusive})`);
     }
-    query = query.orderBy("id", "desc");
+    query = query.orderBy(sql`julianday(updated_at)`, "desc").orderBy("id", "desc");
     if (filter?.page !== void 0 && filter?.pageSize !== void 0) {
       const offset = (filter.page - 1) * filter.pageSize;
       query = query.offset(offset).limit(filter.pageSize);
@@ -78728,11 +78848,11 @@ var OrderGroupRepository = class {
     if (filter?.isFullyClosed !== void 0) {
       query = query.where("is_fully_closed", "=", filter.isFullyClosed ? 1 : 0);
     }
-    if (filter?.createdDateFrom) {
-      query = query.where(sql`substr(created_at, 1, 10)`, ">=", filter.createdDateFrom);
+    if (filter?.createdAtFrom) {
+      query = query.where(sql`julianday(created_at) >= julianday(${filter.createdAtFrom})`);
     }
-    if (filter?.createdDateTo) {
-      query = query.where(sql`substr(created_at, 1, 10)`, "<=", filter.createdDateTo);
+    if (filter?.createdAtToExclusive) {
+      query = query.where(sql`julianday(created_at) < julianday(${filter.createdAtToExclusive})`);
     }
     const row = await query.executeTakeFirstOrThrow();
     return Number(row.count);
@@ -78750,11 +78870,11 @@ var OrderGroupRepository = class {
     if (filter?.isFullyClosed !== void 0) {
       query = query.where("og.is_fully_closed", "=", filter.isFullyClosed ? 1 : 0);
     }
-    if (filter?.createdDateFrom) {
-      query = query.where(sql`substr(og.created_at, 1, 10)`, ">=", filter.createdDateFrom);
+    if (filter?.createdAtFrom) {
+      query = query.where(sql`julianday(og.created_at) >= julianday(${filter.createdAtFrom})`);
     }
-    if (filter?.createdDateTo) {
-      query = query.where(sql`substr(og.created_at, 1, 10)`, "<=", filter.createdDateTo);
+    if (filter?.createdAtToExclusive) {
+      query = query.where(sql`julianday(og.created_at) < julianday(${filter.createdAtToExclusive})`);
     }
     const row = await query.executeTakeFirstOrThrow();
     return {
@@ -78765,7 +78885,12 @@ var OrderGroupRepository = class {
     };
   }
   async create(group) {
-    return this.db.insertInto("order_groups").values(group).returningAll().executeTakeFirstOrThrow();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.db.insertInto("order_groups").values({
+      ...group,
+      created_at: group.created_at ?? now,
+      updated_at: group.updated_at ?? now
+    }).returningAll().executeTakeFirstOrThrow();
   }
   async update(id, data) {
     return this.db.updateTable("order_groups").set({ ...data, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).where("id", "=", id).returningAll().executeTakeFirst();
@@ -78841,11 +78966,21 @@ var OrderGroupRepository = class {
     return rows;
   }
   async addItem(item) {
-    return this.db.insertInto("order_group_items").values(item).returningAll().executeTakeFirstOrThrow();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.db.insertInto("order_group_items").values({
+      ...item,
+      created_at: item.created_at ?? now,
+      updated_at: item.updated_at ?? now
+    }).returningAll().executeTakeFirstOrThrow();
   }
   async addItems(items) {
     if (items.length === 0) return [];
-    return this.db.insertInto("order_group_items").values(items).returningAll().execute();
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    return this.db.insertInto("order_group_items").values(items.map((item) => ({
+      ...item,
+      created_at: item.created_at ?? now,
+      updated_at: item.updated_at ?? now
+    }))).returningAll().execute();
   }
   async updateItem(id, data) {
     return this.db.updateTable("order_group_items").set({ ...data, updated_at: (/* @__PURE__ */ new Date()).toISOString() }).where("id", "=", id).returningAll().executeTakeFirst();
@@ -78892,6 +79027,67 @@ var SpreadSubscriptionRepository = class {
   async deleteById(id) {
     const result = await this.db.deleteFrom("spread_subscriptions").where("id", "=", id).executeTakeFirst();
     return BigInt(result.numDeletedRows) > 0n;
+  }
+};
+
+// src/db/repositories/auto-trade-log.repository.ts
+var AutoTradeLogRepository = class {
+  constructor(db) {
+    this.db = db;
+  }
+  db;
+  async create(data) {
+    return this.db.insertInto("auto_trade_logs").values(data).returningAll().executeTakeFirstOrThrow();
+  }
+  async findAll(filter) {
+    let query = this.db.selectFrom("auto_trade_logs").selectAll();
+    if (filter?.accountGroupId !== void 0) {
+      query = query.where("account_group_id", "=", filter.accountGroupId);
+    }
+    if (filter?.subscriptionId !== void 0) {
+      query = query.where("subscription_id", "=", filter.subscriptionId);
+    }
+    if (filter?.phase !== void 0) {
+      query = query.where("phase", "=", filter.phase);
+    }
+    if (filter?.level !== void 0) {
+      query = query.where("level", "=", filter.level);
+    }
+    if (filter?.direction !== void 0) {
+      query = query.where("direction", "=", filter.direction);
+    }
+    if (filter?.action !== void 0) {
+      query = query.where("action", "=", filter.action);
+    }
+    query = query.orderBy("id", "desc");
+    if (filter?.page !== void 0 && filter?.pageSize !== void 0) {
+      const offset = (filter.page - 1) * filter.pageSize;
+      query = query.offset(offset).limit(filter.pageSize);
+    }
+    return query.execute();
+  }
+  async countAll(filter) {
+    let query = this.db.selectFrom("auto_trade_logs").select((eb) => eb.fn.countAll().as("count"));
+    if (filter?.accountGroupId !== void 0) {
+      query = query.where("account_group_id", "=", filter.accountGroupId);
+    }
+    if (filter?.subscriptionId !== void 0) {
+      query = query.where("subscription_id", "=", filter.subscriptionId);
+    }
+    if (filter?.phase !== void 0) {
+      query = query.where("phase", "=", filter.phase);
+    }
+    if (filter?.level !== void 0) {
+      query = query.where("level", "=", filter.level);
+    }
+    if (filter?.direction !== void 0) {
+      query = query.where("direction", "=", filter.direction);
+    }
+    if (filter?.action !== void 0) {
+      query = query.where("action", "=", filter.action);
+    }
+    const row = await query.executeTakeFirstOrThrow();
+    return Number(row.count);
   }
 };
 
@@ -79439,7 +79635,7 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     }
     const page = filter.page ?? 1;
     const pageSize = filter.pageSize ?? 20;
-    const repoFilter = { ...filter, page, pageSize };
+    const repoFilter = { ...filter, ...buildCreatedAtRangeFilter(filter), page, pageSize };
     const [groups, total] = await Promise.all([
       this.orderGroupRepo.findAllWithItems(repoFilter),
       this.orderGroupRepo.countAll(repoFilter)
@@ -79451,7 +79647,10 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     if (filter.createdDateFrom && filter.createdDateTo && filter.createdDateFrom > filter.createdDateTo) {
       throw new ValidationError("\u5F00\u59CB\u65E5\u671F\u4E0D\u80FD\u665A\u4E8E\u7ED3\u675F\u65E5\u671F");
     }
-    const summary = await this.orderGroupRepo.summarize(filter);
+    const summary = await this.orderGroupRepo.summarize({
+      ...filter,
+      ...buildCreatedAtRangeFilter(filter)
+    });
     return {
       ...summary,
       createdDateFrom: filter.createdDateFrom ?? null,
@@ -79813,8 +80012,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
       openCount,
       closedCount,
       itemCount: items.length,
-      createdAt: group.created_at,
-      updatedAt: group.updated_at,
+      createdAt: normalizeStoredUtcTime(group.created_at) ?? group.created_at,
+      updatedAt: normalizeStoredUtcTime(group.updated_at) ?? group.updated_at,
       items
     };
   }
@@ -79833,15 +80032,23 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     const pricedItems = group.items.filter((item) => typeof item[priceKey] === "number");
     if (pricedItems.length < 2) return null;
     const spreadHint = await this.resolveSpreadHint(group.account_group_id, group.remark);
-    if (spreadHint?.accountGroup && spreadHint.subscription) {
-      const itemA = pricedItems.find((item) => item.account_id === spreadHint.accountGroup.account_a_id && item.symbol === spreadHint.subscription.symbol_a);
-      const itemB = pricedItems.find((item) => item.id !== itemA?.id && item.account_id === spreadHint.accountGroup.account_b_id && item.symbol === spreadHint.subscription.symbol_b);
+    const accountGroup = spreadHint?.accountGroup ?? void 0;
+    const subscription = spreadHint?.subscription ?? void 0;
+    if (accountGroup && subscription) {
+      const itemA = pricedItems.find(
+        (item) => item.account_id === accountGroup.account_a_id && item.symbol === subscription.symbol_a
+      );
+      const itemB = pricedItems.find(
+        (item) => item.id !== itemA?.id && item.account_id === accountGroup.account_b_id && item.symbol === subscription.symbol_b
+      );
       const spread = computeLegSpread(itemA, itemB, priceKey);
       if (spread !== null) return spread;
     }
-    if (spreadHint?.accountGroup) {
-      const itemA = pricedItems.find((item) => item.account_id === spreadHint.accountGroup.account_a_id);
-      const itemB = pricedItems.find((item) => item.id !== itemA?.id && item.account_id === spreadHint.accountGroup.account_b_id);
+    if (accountGroup) {
+      const itemA = pricedItems.find((item) => item.account_id === accountGroup.account_a_id);
+      const itemB = pricedItems.find(
+        (item) => item.id !== itemA?.id && item.account_id === accountGroup.account_b_id
+      );
       const spread = computeLegSpread(itemA, itemB, priceKey);
       if (spread !== null) return spread;
     }
@@ -79879,9 +80086,39 @@ function toItemDto(item) {
     tp: item.tp,
     status: item.status,
     errorMessage: item.error_message,
-    openedAt: item.opened_at,
-    closedAt: item.closed_at
+    openedAt: normalizeStoredUtcTime(item.opened_at),
+    closedAt: normalizeStoredUtcTime(item.closed_at)
   };
+}
+function buildCreatedAtRangeFilter(filter) {
+  const createdAtFrom = filter.createdDateFrom ? localDateStartToUtcIso(filter.createdDateFrom) : void 0;
+  const createdAtToExclusive = filter.createdDateTo ? localDateEndExclusiveToUtcIso(filter.createdDateTo) : void 0;
+  return {
+    createdAtFrom,
+    createdAtToExclusive
+  };
+}
+function localDateStartToUtcIso(date) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day, 0, 0, 0, 0).toISOString();
+}
+function localDateEndExclusiveToUtcIso(date) {
+  const [year, month, day] = date.split("-").map(Number);
+  return new Date(year, month - 1, day + 1, 0, 0, 0, 0).toISOString();
+}
+function normalizeStoredUtcTime(value) {
+  if (!value) return null;
+  const trimmed = value.trim();
+  if (/([zZ]|[+\-]\d{2}:\d{2})$/.test(trimmed)) {
+    return trimmed;
+  }
+  if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed.replace(" ", "T")}Z`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}$/.test(trimmed)) {
+    return `${trimmed}Z`;
+  }
+  return trimmed;
 }
 function formatOrderGroupSpread(value) {
   if (value === null) return "\u2014";
@@ -80430,10 +80667,12 @@ function isNonEmptyString(value) {
 var import_node_events4 = require("node:events");
 var HEARTBEAT_INTERVAL_MS = 100;
 var SPREAD_SECOND_POINT_RETENTION_SECONDS = 360;
+var AUTO_TRADE_DECISION_LOG_COOLDOWN_MS = 5e3;
 var SpreadService = class extends import_node_events4.EventEmitter {
-  constructor(repo, accountGroupRepo, wsManager, mt5Sdk, pushService, orderGroupService) {
+  constructor(repo, autoTradeLogRepo, accountGroupRepo, wsManager, mt5Sdk, pushService, orderGroupService) {
     super();
     this.repo = repo;
+    this.autoTradeLogRepo = autoTradeLogRepo;
     this.accountGroupRepo = accountGroupRepo;
     this.wsManager = wsManager;
     this.mt5Sdk = mt5Sdk;
@@ -80441,6 +80680,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     this.orderGroupService = orderGroupService;
   }
   repo;
+  autoTradeLogRepo;
   accountGroupRepo;
   wsManager;
   mt5Sdk;
@@ -80450,8 +80690,11 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   quoteStore = /* @__PURE__ */ new Map();
   subscriptionIndex = /* @__PURE__ */ new Map();
   runtimeStateById = /* @__PURE__ */ new Map();
+  autoTradeRuntimeById = /* @__PURE__ */ new Map();
+  singleLegRuntimeByGroupId = /* @__PURE__ */ new Map();
   secondPointStore = /* @__PURE__ */ new Map();
   lastNotificationAt = /* @__PURE__ */ new Map();
+  lastAutoTradeDecisionAt = /* @__PURE__ */ new Map();
   heartbeatTimer = null;
   async initialize() {
     const rows = await this.repo.findEnabled();
@@ -80482,10 +80725,45 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       notify_expand_threshold: payload.notifyLongThreshold ?? null,
       notify_contract_threshold: payload.notifyShortThreshold ?? null,
       notify_stability_seconds: payload.notifyStabilitySeconds,
-      cooldown_seconds: payload.cooldownSeconds
+      cooldown_seconds: payload.cooldownSeconds,
+      auto_trade_enabled: payload.autoTradeEnabled ? 1 : 0,
+      auto_open_expand_enabled: payload.autoOpenExpandEnabled ? 1 : 0,
+      auto_open_shrink_enabled: payload.autoOpenShrinkEnabled ? 1 : 0,
+      target_expand_groups: payload.targetExpandGroups,
+      target_shrink_groups: payload.targetShrinkGroups,
+      auto_open_expand_threshold: payload.autoOpenExpandThreshold,
+      auto_open_shrink_threshold: payload.autoOpenShrinkThreshold,
+      auto_open_stability_seconds: payload.autoOpenStabilitySeconds,
+      auto_open_cooldown_seconds: payload.autoOpenCooldownSeconds,
+      auto_close_enabled: payload.autoCloseEnabled ? 1 : 0,
+      auto_close_expand_enabled: payload.autoCloseExpandEnabled ? 1 : 0,
+      auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
+      auto_close_expand_protection: payload.autoCloseExpandProtection,
+      auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+      auto_close_batch_count: payload.autoCloseBatchCount,
+      auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
+      single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
+      single_leg_timeout_seconds: payload.singleLegTimeoutSeconds,
+      single_leg_price_drift_threshold: payload.singleLegPriceDriftThreshold,
+      auto_close_single_leg_enabled: payload.autoCloseSingleLegEnabled ? 1 : 0,
+      auto_close_single_leg_cooldown_seconds: payload.autoCloseSingleLegCooldownSeconds,
+      auto_close_single_leg_max_retries: payload.autoCloseSingleLegMaxRetries,
+      single_leg_notify_enabled: payload.singleLegNotifyEnabled ? 1 : 0,
+      single_leg_notify_channel_ids: JSON.stringify(payload.singleLegNotifyChannelIds),
+      single_leg_notify_levels: JSON.stringify(payload.singleLegNotifyLevels)
     });
     await this.syncRuntime(row, group);
+    this.resetAutoTradePause(row.id);
     this.emitConfigSnapshot(row, group);
+    await this.writeAutoTradeLog({
+      accountGroupId,
+      subscriptionId: row.id,
+      phase: "runtime",
+      action: "config.created",
+      level: "info",
+      reason: "\u81EA\u52A8\u4EA4\u6613\u914D\u7F6E\u5DF2\u521B\u5EFA",
+      metadata: { autoTrade: this.toSpreadSubscriptionDto(row).autoTrade }
+    });
     return this.toSpreadSubscriptionDto(row);
   }
   async update(accountGroupId, subscriptionId, input) {
@@ -80508,12 +80786,97 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       notify_expand_threshold: payload.notifyLongThreshold,
       notify_contract_threshold: payload.notifyShortThreshold,
       notify_stability_seconds: payload.notifyStabilitySeconds,
-      cooldown_seconds: payload.cooldownSeconds
+      cooldown_seconds: payload.cooldownSeconds,
+      auto_trade_enabled: payload.autoTradeEnabled ? 1 : 0,
+      auto_open_expand_enabled: payload.autoOpenExpandEnabled ? 1 : 0,
+      auto_open_shrink_enabled: payload.autoOpenShrinkEnabled ? 1 : 0,
+      target_expand_groups: payload.targetExpandGroups,
+      target_shrink_groups: payload.targetShrinkGroups,
+      auto_open_expand_threshold: payload.autoOpenExpandThreshold,
+      auto_open_shrink_threshold: payload.autoOpenShrinkThreshold,
+      auto_open_stability_seconds: payload.autoOpenStabilitySeconds,
+      auto_open_cooldown_seconds: payload.autoOpenCooldownSeconds,
+      auto_close_enabled: payload.autoCloseEnabled ? 1 : 0,
+      auto_close_expand_enabled: payload.autoCloseExpandEnabled ? 1 : 0,
+      auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
+      auto_close_expand_protection: payload.autoCloseExpandProtection,
+      auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+      auto_close_batch_count: payload.autoCloseBatchCount,
+      auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
+      single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
+      single_leg_timeout_seconds: payload.singleLegTimeoutSeconds,
+      single_leg_price_drift_threshold: payload.singleLegPriceDriftThreshold,
+      auto_close_single_leg_enabled: payload.autoCloseSingleLegEnabled ? 1 : 0,
+      auto_close_single_leg_cooldown_seconds: payload.autoCloseSingleLegCooldownSeconds,
+      auto_close_single_leg_max_retries: payload.autoCloseSingleLegMaxRetries,
+      single_leg_notify_enabled: payload.singleLegNotifyEnabled ? 1 : 0,
+      single_leg_notify_channel_ids: JSON.stringify(payload.singleLegNotifyChannelIds),
+      single_leg_notify_levels: JSON.stringify(payload.singleLegNotifyLevels)
     });
     if (!row) throw new NotFoundError("SpreadSubscription", subscriptionId);
     await this.syncRuntime(row, group);
+    this.resetAutoTradePause(row.id);
     this.emitConfigSnapshot(row, group);
+    await this.writeAutoTradeLog({
+      accountGroupId,
+      subscriptionId: row.id,
+      phase: "runtime",
+      action: "config.updated",
+      level: "info",
+      reason: "\u81EA\u52A8\u4EA4\u6613\u914D\u7F6E\u5DF2\u66F4\u65B0",
+      metadata: { autoTrade: this.toSpreadSubscriptionDto(row).autoTrade }
+    });
     return this.toSpreadSubscriptionDto(row);
+  }
+  async listAutoTradeLogs(input) {
+    const page = input.page ?? 1;
+    const pageSize = input.pageSize ?? 50;
+    if (!Number.isInteger(page) || page < 1) {
+      throw new ValidationError("page \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+    }
+    if (!Number.isInteger(pageSize) || pageSize < 1 || pageSize > 200) {
+      throw new ValidationError("pageSize \u5FC5\u987B\u662F 1 \u5230 200 \u4E4B\u95F4\u7684\u6574\u6570");
+    }
+    const filter = {
+      accountGroupId: input.accountGroupId,
+      subscriptionId: input.subscriptionId,
+      phase: input.phase,
+      level: input.level,
+      direction: input.direction,
+      action: input.action,
+      page,
+      pageSize
+    };
+    const [rows, total] = await Promise.all([
+      this.autoTradeLogRepo.findAll(filter),
+      this.autoTradeLogRepo.countAll(filter)
+    ]);
+    return {
+      items: rows.map(toAutoTradeLogDto),
+      total,
+      page,
+      pageSize
+    };
+  }
+  async writeAutoTradeLog(input) {
+    const row = await this.autoTradeLogRepo.create({
+      account_group_id: input.accountGroupId,
+      subscription_id: input.subscriptionId,
+      phase: input.phase,
+      action: input.action,
+      direction: input.direction ?? null,
+      level: input.level ?? "info",
+      reason: input.reason ?? null,
+      runtime_state: input.runtimeState ?? null,
+      long_spread: input.longSpread ?? null,
+      short_spread: input.shortSpread ?? null,
+      long_stable_seconds: input.longStableSeconds ?? null,
+      short_stable_seconds: input.shortStableSeconds ?? null,
+      request_id: input.requestId ?? null,
+      metadata: input.metadata ? JSON.stringify(input.metadata) : null,
+      created_at: (/* @__PURE__ */ new Date()).toISOString()
+    });
+    return toAutoTradeLogDto(row);
   }
   async delete(accountGroupId, subscriptionId) {
     const existing = await this.repo.findById(subscriptionId);
@@ -80550,6 +80913,15 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   }
   getRuntimeSubscriptionIds() {
     return [...this.runtimeById.keys()];
+  }
+  async getAutoTradeRuntime(subscriptionId) {
+    const row = await this.repo.findById(subscriptionId);
+    if (!row) throw new NotFoundError("SpreadSubscription", subscriptionId);
+    return this.buildAutoTradeRuntimeDto(row);
+  }
+  async listAutoTradeRuntime(accountGroupId) {
+    const rows = accountGroupId !== void 0 ? await this.repo.findAllByAccountGroupId(accountGroupId) : await this.repo.findEnabled();
+    return Promise.all(rows.map((row) => this.buildAutoTradeRuntimeDto(row)));
   }
   async getChart(accountGroupId, subscriptionId, timeframeMinutes, limit = 120) {
     validateChartQuery(timeframeMinutes, limit);
@@ -80732,6 +81104,13 @@ var SpreadService = class extends import_node_events4.EventEmitter {
         snapshot
       });
       await this.maybeNotify(runtime, snapshot);
+      void this.maybeRunAutoTrade(runtime, snapshot).catch((error) => {
+        console.error("[AutoTrade] evaluation failed", {
+          subscriptionId,
+          accountGroupId: runtime.group.id,
+          error: error instanceof Error ? error.message : String(error)
+        });
+      });
     }
   }
   close() {
@@ -80770,6 +81149,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const shortSpread = accountAQuote && accountBQuote ? roundNumber(accountAQuote.bid - lotRatio * accountBQuote.ask) : null;
     updateThresholdTracker(state.longTracker, longSpread, row.notify_expand_threshold, "<=");
     updateThresholdTracker(state.shortTracker, shortSpread, row.notify_contract_threshold, ">=");
+    updateThresholdTracker(state.autoOpenExpandTracker, longSpread, row.auto_open_expand_threshold, "<=");
+    updateThresholdTracker(state.autoOpenShrinkTracker, shortSpread, row.auto_open_shrink_threshold, ">=");
     return {
       subscription: this.toSpreadSubscriptionDto(row),
       status,
@@ -80854,6 +81235,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       heartbeatSeq: 0,
       longTracker: { activeSince: null },
       shortTracker: { activeSince: null },
+      autoOpenExpandTracker: { activeSince: null },
+      autoOpenShrinkTracker: { activeSince: null },
       accountAQuoteFingerprint: null,
       accountBQuoteFingerprint: null,
       accountAHeartbeat: 0,
@@ -80904,6 +81287,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
         heartbeatSeq: 0,
         longTracker: { activeSince: null },
         shortTracker: { activeSince: null },
+        autoOpenExpandTracker: { activeSince: null },
+        autoOpenShrinkTracker: { activeSince: null },
         accountAQuoteFingerprint: null,
         accountBQuoteFingerprint: null,
         accountAHeartbeat: 0,
@@ -81036,7 +81421,755 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     }
     this.secondPointStore.set(subscriptionId, existing);
   }
+  getAutoTradeRuntimeState(row) {
+    const existing = this.autoTradeRuntimeById.get(row.id);
+    if (existing) {
+      existing.enabled = row.auto_trade_enabled === 1;
+      return existing;
+    }
+    const state = {
+      subscriptionId: row.id,
+      accountGroupId: row.account_group_id,
+      enabled: row.auto_trade_enabled === 1,
+      locked: false,
+      paused: false,
+      pauseReason: null,
+      expand: createAutoTradeSideRuntimeState(),
+      shrink: createAutoTradeSideRuntimeState()
+    };
+    this.autoTradeRuntimeById.set(row.id, state);
+    return state;
+  }
+  async buildAutoTradeRuntimeDto(row) {
+    const runtime = this.getAutoTradeRuntimeState(row);
+    const group = await this.getLatestRuntimeGroup(row);
+    const availabilityReason = getAutoTradeAvailabilityReason(row, group);
+    if (row.auto_trade_enabled === 1 && availabilityReason) {
+      applyAutoTradeAvailabilityReason(runtime, availabilityReason);
+    } else if (row.auto_trade_enabled === 1 && runtime.paused && runtime.pauseReason) {
+      applyAutoTradePauseReason(runtime, runtime.pauseReason);
+    } else if (row.auto_trade_enabled === 1) {
+      const singleLegSnapshot = this.getSnapshotFromRow(row, group);
+      const singleLegCandidate = row.single_leg_detect_enabled === 1 ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot) : null;
+      if (singleLegCandidate) {
+        runtime.locked = true;
+        const singleLegRuntime = this.getSingleLegRuntimeState(singleLegCandidate.group.id);
+        const sideState = singleLegCandidate.side === "expand" ? runtime.expand : runtime.shrink;
+        if (singleLegRuntime.autoClosing) {
+          sideState.status = "closing";
+          sideState.lastReason ??= "\u68C0\u6D4B\u5230\u5355\u817F\u98CE\u9669\uFF0C\u6B63\u5728\u6267\u884C\u81EA\u52A8\u5E73\u5355\u817F";
+        } else if (sideState.status === "close_cooldown") {
+          sideState.lastReason ??= `\u5355\u817F\u4FDD\u62A4\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getSingleLegCooldownRemainingSeconds(singleLegRuntime)} \u79D2`;
+        } else if (isSingleLegCooldownActive(singleLegRuntime)) {
+          sideState.status = "close_cooldown";
+          sideState.lastReason = `\u5355\u817F\u4FDD\u62A4\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getSingleLegCooldownRemainingSeconds(singleLegRuntime)} \u79D2`;
+        } else {
+          sideState.lastReason = buildSingleLegDetectedReason(singleLegCandidate, row.single_leg_timeout_seconds);
+        }
+      } else if (!runtime.expand.opening && !runtime.expand.closing && !runtime.shrink.opening && !runtime.shrink.closing) {
+        runtime.locked = false;
+      }
+    } else if (!runtime.expand.opening && !runtime.expand.closing && !runtime.shrink.opening && !runtime.shrink.closing) {
+      runtime.locked = false;
+    }
+    const [expandGroups, shrinkGroups] = await Promise.all([
+      this.findOpenGroupsForSubscription(row.id, "expand"),
+      this.findOpenGroupsForSubscription(row.id, "shrink")
+    ]);
+    return {
+      subscriptionId: row.id,
+      accountGroupId: row.account_group_id,
+      enabled: runtime.enabled,
+      locked: runtime.locked,
+      expand: toAutoTradeSideRuntimeDto(runtime.expand, expandGroups.length, row.target_expand_groups),
+      shrink: toAutoTradeSideRuntimeDto(runtime.shrink, shrinkGroups.length, row.target_shrink_groups)
+    };
+  }
+  async maybeRunAutoTrade(runtime, snapshot) {
+    const row = runtime.row;
+    const state = this.getAutoTradeRuntimeState(row);
+    const group = await this.getLatestRuntimeGroup(row, runtime);
+    const effectiveSnapshot = this.getSnapshotFromRow(row, group);
+    const spreadState = this.getRuntimeState(row.id);
+    state.enabled = row.auto_trade_enabled === 1;
+    state.accountGroupId = row.account_group_id;
+    if (row.auto_trade_enabled !== 1) {
+      state.locked = false;
+      return;
+    }
+    const availabilityReason = getAutoTradeAvailabilityReason(row, group, effectiveSnapshot.status);
+    if (availabilityReason) {
+      applyAutoTradeAvailabilityReason(state, availabilityReason);
+      await this.maybeLogAutoTradeDecision(row, effectiveSnapshot, spreadState, "expand", "auto.trade.blocked", availabilityReason);
+      await this.maybeLogAutoTradeDecision(row, effectiveSnapshot, spreadState, "shrink", "auto.trade.blocked", availabilityReason);
+      return;
+    }
+    if (state.paused && state.pauseReason) {
+      applyAutoTradePauseReason(state, state.pauseReason);
+      await this.maybeLogAutoTradeDecision(row, effectiveSnapshot, spreadState, "expand", "auto.trade.paused", state.pauseReason);
+      await this.maybeLogAutoTradeDecision(row, effectiveSnapshot, spreadState, "shrink", "auto.trade.paused", state.pauseReason);
+      return;
+    }
+    state.locked = false;
+    if (await this.handleSingleLegRisk(row, effectiveSnapshot, state)) return;
+    if (await this.tryAutoClose(row, effectiveSnapshot, state, "expand")) return;
+    if (await this.tryAutoClose(row, effectiveSnapshot, state, "shrink")) return;
+    if (await this.tryAutoOpen(row, effectiveSnapshot, state, "expand")) return;
+    if (await this.tryAutoOpen(row, effectiveSnapshot, state, "shrink")) return;
+  }
+  async handleSingleLegRisk(row, snapshot, state) {
+    if (row.single_leg_detect_enabled !== 1) return false;
+    const candidate = await this.findSingleLegCandidateForSubscription(row.id, snapshot);
+    if (!candidate) return false;
+    const sideState = candidate.side === "expand" ? state.expand : state.shrink;
+    const runtime = this.getSingleLegRuntimeState(candidate.group.id);
+    const now = Date.now();
+    const timeoutMs = row.single_leg_timeout_seconds * 1e3;
+    const elapsedMs = Math.max(0, now - candidate.referenceTime);
+    const remainingSeconds = Math.max(0, Math.ceil((timeoutMs - elapsedMs) / 1e3));
+    const driftText = candidate.spreadDrift === null ? null : roundNumber(candidate.spreadDrift);
+    state.locked = true;
+    if (runtime.autoClosing) {
+      sideState.status = "closing";
+      sideState.closing = true;
+      sideState.lastReason = "\u68C0\u6D4B\u5230\u5355\u817F\u98CE\u9669\uFF0C\u6B63\u5728\u6267\u884C\u81EA\u52A8\u5E73\u5355\u817F";
+      return true;
+    }
+    if (elapsedMs < timeoutMs) {
+      sideState.status = "idle";
+      sideState.lastReason = `\u68C0\u6D4B\u5230\u7591\u4F3C\u5355\u817F\u98CE\u9669\uFF0C\u7B49\u5F85 ${remainingSeconds} \u79D2\u540E\u786E\u8BA4`;
+      await this.maybeLogAutoTradeDecision(
+        row,
+        snapshot,
+        this.getRuntimeState(row.id),
+        candidate.side,
+        "single-leg.pending",
+        sideState.lastReason
+      );
+      return true;
+    }
+    if (row.single_leg_price_drift_threshold !== null && candidate.spreadDrift !== null && candidate.spreadDrift < row.single_leg_price_drift_threshold) {
+      sideState.status = "idle";
+      sideState.lastReason = `\u5355\u817F\u5DF2\u8D85\u65F6\uFF0C\u5F53\u524D\u504F\u79FB ${driftText}\uFF0C\u672A\u8FBE\u5230\u5904\u7406\u9608\u503C ${roundNumber(row.single_leg_price_drift_threshold)}`;
+      await this.maybeLogAutoTradeDecision(
+        row,
+        snapshot,
+        this.getRuntimeState(row.id),
+        candidate.side,
+        "single-leg.drift.pending",
+        sideState.lastReason
+      );
+      return true;
+    }
+    const detectedReason = buildSingleLegDetectedReason(candidate, row.single_leg_timeout_seconds);
+    const pauseReason = buildSingleLegPauseReason();
+    sideState.status = "idle";
+    sideState.lastReason = `${detectedReason}\uFF1B${pauseReason}`;
+    pauseAutoTradeBySingleLeg(state, candidate.side, pauseReason);
+    await this.maybeLogAutoTradeDecision(
+      row,
+      snapshot,
+      this.getRuntimeState(row.id),
+      candidate.side,
+      "single-leg.detected",
+      detectedReason
+    );
+    if (row.single_leg_notify_enabled === 1) {
+      await this.maybeNotifySingleLeg(row, candidate, "warn", "single-leg.detected", detectedReason);
+    }
+    if (row.auto_close_single_leg_enabled !== 1) {
+      return true;
+    }
+    if (isSingleLegCooldownActive(runtime)) {
+      sideState.status = "close_cooldown";
+      sideState.lastReason = `\u5355\u817F\u4FDD\u62A4\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getSingleLegCooldownRemainingSeconds(runtime)} \u79D2`;
+      return true;
+    }
+    if (runtime.retryCount >= row.auto_close_single_leg_max_retries) {
+      sideState.status = "idle";
+      sideState.lastReason = `\u81EA\u52A8\u5E73\u5355\u817F\u5DF2\u8FBE\u6700\u5927\u91CD\u8BD5\u6B21\u6570\uFF08${row.auto_close_single_leg_max_retries}\uFF09`;
+      await this.maybeLogAutoTradeDecision(
+        row,
+        snapshot,
+        this.getRuntimeState(row.id),
+        candidate.side,
+        "single-leg.auto-close.max-retries",
+        sideState.lastReason
+      );
+      if (row.single_leg_notify_enabled === 1) {
+        await this.maybeNotifySingleLeg(row, candidate, "error", "single-leg.auto-close.max-retries", sideState.lastReason);
+      }
+      return true;
+    }
+    runtime.autoClosing = true;
+    sideState.closing = true;
+    sideState.status = "closing";
+    sideState.lastReason = "\u68C0\u6D4B\u5230\u5355\u817F\u98CE\u9669\uFF0C\u6B63\u5728\u81EA\u52A8\u5E73\u5355\u817F";
+    const requestId = buildAutoTradeRequestId(row.id, candidate.side, "single-leg-close");
+    try {
+      const result = await this.orderGroupService.batchClose(candidate.group.id);
+      const actionAt = Date.now();
+      runtime.autoClosing = false;
+      runtime.lastActionAt = actionAt;
+      runtime.retryCount += 1;
+      runtime.cooldownUntil = actionAt + row.auto_close_single_leg_cooldown_seconds * 1e3;
+      runtime.lastReason = "\u81EA\u52A8\u5E73\u5355\u817F\u5DF2\u6267\u884C";
+      sideState.closing = false;
+      sideState.status = "close_cooldown";
+      sideState.lastActionAt = actionAt;
+      sideState.lastCloseAt = actionAt;
+      sideState.cooldownUntil = runtime.cooldownUntil;
+      sideState.lastError = null;
+      sideState.lastReason = `\u81EA\u52A8\u5E73\u5355\u817F\u5DF2\u6267\u884C\uFF0C\u51B7\u5374 ${row.auto_close_single_leg_cooldown_seconds} \u79D2\u540E\u53EF\u518D\u6B21\u5C1D\u8BD5`;
+      state.locked = false;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "single-leg.auto-close.executed",
+        direction: candidate.side,
+        level: "warn",
+        reason: sideState.lastReason,
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(this.getRuntimeState(row.id)),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(this.getRuntimeState(row.id)),
+        requestId,
+        metadata: {
+          groupId: candidate.group.id,
+          pauseReason,
+          resultGroupId: result.id,
+          spreadDrift: candidate.spreadDrift
+        }
+      });
+      if (row.single_leg_notify_enabled === 1) {
+        await this.maybeNotifySingleLeg(row, candidate, "warn", "single-leg.auto-close.executed", sideState.lastReason);
+      }
+      return true;
+    } catch (error) {
+      const actionAt = Date.now();
+      runtime.autoClosing = false;
+      runtime.lastActionAt = actionAt;
+      runtime.retryCount += 1;
+      runtime.cooldownUntil = actionAt + row.auto_close_single_leg_cooldown_seconds * 1e3;
+      runtime.lastReason = error instanceof Error ? error.message : String(error);
+      sideState.closing = false;
+      sideState.status = "close_cooldown";
+      sideState.lastActionAt = actionAt;
+      sideState.cooldownUntil = runtime.cooldownUntil;
+      sideState.lastError = runtime.lastReason;
+      sideState.lastReason = `\u81EA\u52A8\u5E73\u5355\u817F\u5931\u8D25\uFF0C${row.auto_close_single_leg_cooldown_seconds} \u79D2\u540E\u53EF\u91CD\u8BD5`;
+      state.locked = true;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "single-leg.auto-close.failed",
+        direction: candidate.side,
+        level: "error",
+        reason: runtime.lastReason,
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(this.getRuntimeState(row.id)),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(this.getRuntimeState(row.id)),
+        requestId,
+        metadata: {
+          groupId: candidate.group.id,
+          spreadDrift: candidate.spreadDrift,
+          retryCount: runtime.retryCount,
+          pauseReason
+        }
+      });
+      if (row.single_leg_notify_enabled === 1) {
+        await this.maybeNotifySingleLeg(row, candidate, "error", "single-leg.auto-close.failed", runtime.lastReason ?? sideState.lastReason ?? "\u81EA\u52A8\u5E73\u5355\u817F\u5931\u8D25");
+      }
+      return true;
+    }
+  }
+  async getLatestRuntimeGroup(row, runtime) {
+    const latest = await this.accountGroupRepo.findByIdWithAccounts(row.account_group_id);
+    if (latest) {
+      if (runtime) {
+        runtime.group = latest;
+      } else {
+        const existing2 = this.runtimeById.get(row.id);
+        if (existing2) existing2.group = latest;
+      }
+      return latest;
+    }
+    if (runtime) return runtime.group;
+    const existing = this.runtimeById.get(row.id);
+    if (existing) return existing.group;
+    throw new NotFoundError("AccountGroup", row.account_group_id);
+  }
+  async tryAutoOpen(row, snapshot, state, side) {
+    const sideState = side === "expand" ? state.expand : state.shrink;
+    const spreadState = this.getRuntimeState(row.id);
+    const enabled = side === "expand" ? row.auto_open_expand_enabled === 1 : row.auto_open_shrink_enabled === 1;
+    const targetGroups = side === "expand" ? row.target_expand_groups : row.target_shrink_groups;
+    if (!enabled) {
+      sideState.lastReason = "auto open disabled";
+      return false;
+    }
+    if (targetGroups <= 0) {
+      sideState.lastReason = "\u672A\u8BBE\u7F6E\u76EE\u6807\u5F00\u4ED3\u7EC4\u6570";
+      return false;
+    }
+    if (sideState.opening || sideState.closing) {
+      sideState.lastReason = "\u5F53\u524D\u65B9\u5411\u6B63\u5728\u6267\u884C\u5F00\u4ED3\u6216\u5E73\u4ED3";
+      return false;
+    }
+    if (isCooldownActive(sideState)) {
+      sideState.status = "open_cooldown";
+      sideState.lastReason = `\u5F00\u4ED3\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getCooldownRemainingSeconds(sideState)} \u79D2`;
+      return false;
+    }
+    const currentGroups = await this.findOpenGroupsForSubscription(row.id, side);
+    if (currentGroups.length >= targetGroups) {
+      sideState.lastReason = `\u5DF2\u8FBE\u5230\u76EE\u6807\u5F00\u4ED3\u7EC4\u6570\uFF08${currentGroups.length}/${targetGroups}\uFF09`;
+      return false;
+    }
+    const triggered = side === "expand" ? isAutoOpenExpandTriggered(row, snapshot, spreadState) : isAutoOpenShrinkTriggered(row, snapshot, spreadState);
+    if (!triggered) {
+      sideState.lastReason = getAutoOpenPendingReason(row, snapshot, spreadState, side);
+      return false;
+    }
+    sideState.opening = true;
+    sideState.status = "opening";
+    sideState.lastReason = null;
+    state.locked = true;
+    const requestId = buildAutoTradeRequestId(row.id, side, "open");
+    try {
+      const result = await this.placeOrder(row.account_group_id, {
+        subscriptionId: row.id,
+        direction: side === "expand" ? "sellB_buyA" : "sellA_buyB",
+        lotsA: row.lots_a,
+        lotsB: row.lots_b ?? row.lots_a,
+        comment: `[auto-trade] ${side} open`,
+        remark: [
+          `spreadSubscriptionId=${row.id}`,
+          `direction=${side === "expand" ? "sellB_buyA" : "sellA_buyB"}`,
+          "autoTrade=1"
+        ].join("; ")
+      });
+      const now = Date.now();
+      sideState.opening = false;
+      sideState.status = "open_cooldown";
+      sideState.lastActionAt = now;
+      sideState.lastOpenAt = now;
+      sideState.cooldownUntil = now + row.auto_open_cooldown_seconds * 1e3;
+      sideState.lastError = null;
+      sideState.lastReason = `\u81EA\u52A8\u5F00\u4ED3\u5DF2\u6267\u884C\uFF0C\u51B7\u5374 ${row.auto_open_cooldown_seconds} \u79D2\u540E\u53EF\u7EE7\u7EED\u8865\u4ED3`;
+      state.locked = false;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "auto.open.executed",
+        direction: side,
+        level: "info",
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(spreadState),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState),
+        requestId,
+        metadata: {
+          orderGroupId: result.id,
+          targetGroups,
+          currentGroups: currentGroups.length + 1
+        }
+      });
+      await this.maybeNotifyAutoTradeExecution({
+        row,
+        level: "info",
+        action: "auto.open.executed",
+        side,
+        reason: sideState.lastReason,
+        snapshot,
+        metadata: {
+          orderGroupId: result.id,
+          targetGroups,
+          currentGroups: currentGroups.length + 1
+        }
+      });
+      return true;
+    } catch (error) {
+      const now = Date.now();
+      sideState.opening = false;
+      sideState.status = "idle";
+      sideState.lastActionAt = now;
+      sideState.lastError = error instanceof Error ? error.message : String(error);
+      sideState.lastReason = "\u81EA\u52A8\u5F00\u4ED3\u6267\u884C\u5931\u8D25";
+      state.locked = false;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "auto.open.failed",
+        direction: side,
+        level: "error",
+        reason: sideState.lastError,
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(spreadState),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState),
+        requestId
+      });
+      await this.maybeNotifyAutoTradeExecution({
+        row,
+        level: "error",
+        action: "auto.open.failed",
+        side,
+        reason: sideState.lastError ?? sideState.lastReason ?? "\u81EA\u52A8\u5F00\u4ED3\u6267\u884C\u5931\u8D25",
+        snapshot,
+        metadata: { requestId }
+      });
+      return false;
+    }
+  }
+  async tryAutoClose(row, snapshot, state, side) {
+    const sideState = side === "expand" ? state.expand : state.shrink;
+    const spreadState = this.getRuntimeState(row.id);
+    const enabled = row.auto_close_enabled === 1 && (side === "expand" ? row.auto_close_expand_enabled === 1 : row.auto_close_shrink_enabled === 1);
+    if (!enabled) {
+      sideState.lastReason = "\u672A\u5F00\u542F\u81EA\u52A8\u5E73\u4ED3";
+      return false;
+    }
+    if (sideState.opening || sideState.closing) {
+      sideState.lastReason = "\u5F53\u524D\u65B9\u5411\u6B63\u5728\u6267\u884C\u5F00\u4ED3\u6216\u5E73\u4ED3";
+      return false;
+    }
+    if (isCooldownActive(sideState)) {
+      sideState.status = "close_cooldown";
+      sideState.lastReason = `\u5E73\u4ED3\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getCooldownRemainingSeconds(sideState)} \u79D2`;
+      return false;
+    }
+    const groups = await this.findOpenGroupsForSubscription(row.id, side);
+    if (groups.length === 0) {
+      sideState.lastReason = "\u5F53\u524D\u65E0\u53EF\u81EA\u52A8\u5E73\u4ED3\u8BA2\u5355\u7EC4";
+      return false;
+    }
+    const protectionError = getAutoCloseProtectionError(row, snapshot, side);
+    if (protectionError) {
+      sideState.lastReason = protectionError;
+      await this.maybeLogAutoTradeDecision(row, snapshot, spreadState, side, "auto.close.skipped", protectionError);
+      return false;
+    }
+    sideState.closing = true;
+    sideState.status = "closing";
+    sideState.lastReason = null;
+    state.locked = true;
+    const requestId = buildAutoTradeRequestId(row.id, side, "close");
+    const groupIds = groups.sort((a, b) => b.id - a.id).slice(0, row.auto_close_batch_count).map((group) => group.id);
+    try {
+      const result = await this.orderGroupService.batchCloseMany(groupIds);
+      const now = Date.now();
+      sideState.closing = false;
+      sideState.status = "close_cooldown";
+      sideState.lastActionAt = now;
+      sideState.lastCloseAt = now;
+      sideState.cooldownUntil = now + row.auto_close_cooldown_seconds * 1e3;
+      sideState.lastError = null;
+      sideState.lastReason = `\u81EA\u52A8\u5E73\u4ED3\u5DF2\u6267\u884C\uFF0C\u51B7\u5374 ${row.auto_close_cooldown_seconds} \u79D2\u540E\u53EF\u518D\u6B21\u89E6\u53D1`;
+      state.locked = false;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "auto.close.executed",
+        direction: side,
+        level: "info",
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(spreadState),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState),
+        requestId,
+        metadata: {
+          groupIds,
+          closedGroupIds: result.map((item) => item.id)
+        }
+      });
+      await this.maybeNotifyAutoTradeExecution({
+        row,
+        level: "info",
+        action: "auto.close.executed",
+        side,
+        reason: sideState.lastReason,
+        snapshot,
+        metadata: {
+          groupIds,
+          closedGroupIds: result.map((item) => item.id)
+        }
+      });
+      return true;
+    } catch (error) {
+      const now = Date.now();
+      sideState.closing = false;
+      sideState.status = "idle";
+      sideState.lastActionAt = now;
+      sideState.lastError = error instanceof Error ? error.message : String(error);
+      sideState.lastReason = "\u81EA\u52A8\u5E73\u4ED3\u6267\u884C\u5931\u8D25";
+      state.locked = false;
+      await this.writeAutoTradeLog({
+        accountGroupId: row.account_group_id,
+        subscriptionId: row.id,
+        phase: "execution",
+        action: "auto.close.failed",
+        direction: side,
+        level: "error",
+        reason: sideState.lastError,
+        runtimeState: sideState.status,
+        longSpread: snapshot.longSpread,
+        shortSpread: snapshot.shortSpread,
+        longStableSeconds: getAutoTradeLongStableSeconds(spreadState),
+        shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState),
+        requestId,
+        metadata: { groupIds }
+      });
+      await this.maybeNotifyAutoTradeExecution({
+        row,
+        level: "error",
+        action: "auto.close.failed",
+        side,
+        reason: sideState.lastError ?? sideState.lastReason ?? "\u81EA\u52A8\u5E73\u4ED3\u6267\u884C\u5931\u8D25",
+        snapshot,
+        metadata: { groupIds, requestId }
+      });
+      return false;
+    }
+  }
+  async maybeLogAutoTradeDecision(row, snapshot, spreadState, side, action, reason) {
+    const key = `${row.id}:${side}:${action}:${reason}`;
+    const now = Date.now();
+    const last = this.lastAutoTradeDecisionAt.get(key) ?? 0;
+    if (now - last < AUTO_TRADE_DECISION_LOG_COOLDOWN_MS) return;
+    this.lastAutoTradeDecisionAt.set(key, now);
+    await this.writeAutoTradeLog({
+      accountGroupId: row.account_group_id,
+      subscriptionId: row.id,
+      phase: "decision",
+      action,
+      direction: side,
+      level: "info",
+      reason,
+      longSpread: snapshot.longSpread,
+      shortSpread: snapshot.shortSpread,
+      longStableSeconds: getAutoTradeLongStableSeconds(spreadState),
+      shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState)
+    });
+  }
+  async findOpenGroupsForSubscription(subscriptionId, side) {
+    const groups = await this.orderGroupService.listOpenRuntimeGroups();
+    return groups.filter((group) => {
+      if (group.isFullyClosed) return false;
+      if ((group.items ?? []).some((item) => item.status === "closing")) return false;
+      const metadata = parseSpreadRemark2(group.remark);
+      if (metadata.subscriptionId !== subscriptionId) return false;
+      if (side === "expand") return metadata.direction === "sellB_buyA";
+      return metadata.direction === "sellA_buyB";
+    });
+  }
+  async findSingleLegCandidateForSubscription(subscriptionId, snapshot) {
+    const groups = await this.orderGroupService.listOpenRuntimeGroups();
+    const candidates = groups.flatMap((group) => {
+      const metadata = parseSpreadRemark2(group.remark);
+      if (metadata.subscriptionId !== subscriptionId || !metadata.direction) return [];
+      const openItems = (group.items ?? []).filter((item) => item.status === "open");
+      if (openItems.length === 0) return [];
+      if (openItems.length >= (group.itemCount || (group.items ?? []).length)) return [];
+      const side = metadata.direction === "sellB_buyA" ? "expand" : "shrink";
+      const currentSpread = side === "expand" ? snapshot.longSpread : snapshot.shortSpread;
+      const spreadDrift = typeof currentSpread === "number" && typeof group.openSpread === "number" ? roundNumber(Math.abs(currentSpread - group.openSpread)) : null;
+      return [{
+        group,
+        side,
+        currentSpread,
+        spreadDrift,
+        referenceTime: resolveSingleLegReferenceTime(group)
+      }];
+    }).sort((a, b) => b.referenceTime - a.referenceTime || b.group.id - a.group.id);
+    return candidates[0] ?? null;
+  }
+  getSingleLegRuntimeState(groupId) {
+    const existing = this.singleLegRuntimeByGroupId.get(groupId);
+    if (existing) return existing;
+    const created = {
+      autoClosing: false,
+      cooldownUntil: null,
+      lastActionAt: null,
+      retryCount: 0,
+      lastReason: null,
+      lastNotifiedAtByLevel: {}
+    };
+    this.singleLegRuntimeByGroupId.set(groupId, created);
+    return created;
+  }
+  resetAutoTradePause(subscriptionId) {
+    const runtime = this.autoTradeRuntimeById.get(subscriptionId);
+    if (!runtime) return;
+    runtime.paused = false;
+    runtime.pauseReason = null;
+    runtime.locked = false;
+    for (const side of [runtime.expand, runtime.shrink]) {
+      if (!side.opening && !side.closing && !isCooldownActive(side)) {
+        side.status = "idle";
+      }
+      if (!side.opening && !side.closing) {
+        side.lastReason = null;
+      }
+      side.lastError = null;
+    }
+  }
+  async maybeNotifySingleLeg(row, candidate, level, action, reason) {
+    if (row.single_leg_notify_enabled !== 1) return;
+    const levels = parseAutoTradeNotifyLevels(row.single_leg_notify_levels);
+    if (!levels.includes(level)) return;
+    const channelIds = parseChannelIds(row.single_leg_notify_channel_ids);
+    if (channelIds.length === 0) return;
+    const runtime = this.getSingleLegRuntimeState(candidate.group.id);
+    const now = Date.now();
+    const lastNotifiedAt = runtime.lastNotifiedAtByLevel[level] ?? 0;
+    if (now - lastNotifiedAt < AUTO_TRADE_DECISION_LOG_COOLDOWN_MS) return;
+    const directionLabel = candidate.side === "expand" ? "\u6269\u65B9\u5411" : "\u7F29\u65B9\u5411";
+    const driftText = candidate.spreadDrift === null ? "\u2014" : String(candidate.spreadDrift);
+    const currentSpreadText = candidate.currentSpread === null ? "\u2014" : String(roundNumber(candidate.currentSpread));
+    const result = await this.pushService.sendToChannels(channelIds, {
+      title: `${row.name} \xB7 \u5355\u817F\u98CE\u9669`,
+      body: [
+        `\u8BA2\u5355\u7EC4 #${candidate.group.id} \xB7 ${directionLabel}`,
+        reason,
+        `\u5F53\u524D\u4EF7\u5DEE ${currentSpreadText}\uFF0C\u504F\u79FB ${driftText}`,
+        `\u52A8\u4F5C ${action}`
+      ].join("\n\n"),
+      level,
+      metadata: {
+        kind: "auto-trade-single-leg",
+        action,
+        spreadSubscriptionId: row.id,
+        accountGroupId: row.account_group_id,
+        orderGroupId: candidate.group.id,
+        direction: candidate.side,
+        currentSpread: candidate.currentSpread,
+        spreadDrift: candidate.spreadDrift
+      }
+    });
+    if (result.deliveredChannelIds.length > 0) {
+      runtime.lastNotifiedAtByLevel[level] = now;
+    }
+  }
+  async maybeNotifyAutoTradeExecution(input) {
+    const { row, level, action, side, reason, snapshot, metadata } = input;
+    if (row.single_leg_notify_enabled !== 1) return;
+    const levels = parseAutoTradeNotifyLevels(row.single_leg_notify_levels);
+    if (!levels.includes(level)) return;
+    const channelIds = parseChannelIds(row.single_leg_notify_channel_ids);
+    if (channelIds.length === 0) return;
+    const sideLabel = side === "expand" ? "\u6269\u65B9\u5411" : "\u7F29\u65B9\u5411";
+    const spreadValue = side === "expand" ? snapshot.longSpread : snapshot.shortSpread;
+    const spreadText = spreadValue === null ? "\u2014" : String(roundNumber(spreadValue));
+    const actionLabel = toAutoTradeNotifyActionLabel(action);
+    await this.pushService.sendToChannels(channelIds, {
+      title: `${row.name} \xB7 ${actionLabel}`,
+      body: [
+        `${sideLabel} \xB7 \u8BA2\u9605 #${row.id}`,
+        reason,
+        `\u5F53\u524D\u4EF7\u5DEE ${spreadText}`,
+        `\u52A8\u4F5C ${action}`
+      ].join("\n\n"),
+      level,
+      metadata: {
+        kind: "auto-trade",
+        action,
+        spreadSubscriptionId: row.id,
+        accountGroupId: row.account_group_id,
+        direction: side,
+        currentSpread: spreadValue,
+        ...metadata
+      }
+    });
+  }
 };
+function createAutoTradeSideRuntimeState() {
+  return {
+    status: "idle",
+    opening: false,
+    closing: false,
+    lastActionAt: null,
+    lastOpenAt: null,
+    lastCloseAt: null,
+    cooldownUntil: null,
+    lastReason: null,
+    lastError: null
+  };
+}
+function getAutoTradeAvailabilityReason(row, group, snapshotStatus) {
+  if (row.is_enabled !== 1) return "\u8BA2\u9605\u5DF2\u7981\u7528";
+  if (!group) return "\u8D26\u53F7\u7EC4\u4E0D\u5B58\u5728";
+  if (group.is_enabled !== 1) return "\u8D26\u53F7\u7EC4\u5DF2\u7981\u7528";
+  if (group.accountA.is_enabled !== 1) return "A \u8D26\u53F7\u5DF2\u7981\u7528";
+  if (group.accountB.is_enabled !== 1) return "B \u8D26\u53F7\u5DF2\u7981\u7528";
+  if (!group.accountA.session_id || !group.accountB.session_id) return "A/B \u8D26\u53F7\u672A\u5168\u90E8\u8FDE\u63A5";
+  if (snapshotStatus && snapshotStatus !== "ready") return "\u5B9E\u65F6\u4EF7\u5DEE\u672A\u5C31\u7EEA";
+  return null;
+}
+function applyAutoTradeAvailabilityReason(state, reason) {
+  state.locked = true;
+  for (const side of [state.expand, state.shrink]) {
+    side.lastReason = reason;
+    if (!side.opening && !side.closing && !isCooldownActive(side)) {
+      side.status = "idle";
+    }
+  }
+}
+function applyAutoTradePauseReason(state, reason) {
+  state.locked = true;
+  state.paused = true;
+  state.pauseReason = reason;
+  for (const side of [state.expand, state.shrink]) {
+    if (!side.lastReason) {
+      side.lastReason = reason;
+    }
+    if (!side.opening && !side.closing && !isCooldownActive(side)) {
+      side.status = "idle";
+    }
+  }
+}
+function pauseAutoTradeBySingleLeg(state, side, reason) {
+  applyAutoTradePauseReason(state, reason);
+  const otherSide = side === "expand" ? state.shrink : state.expand;
+  otherSide.lastReason = reason;
+}
+function buildSingleLegPauseReason() {
+  return "\u68C0\u6D4B\u5230\u5355\u817F\u98CE\u9669\uFF0C\u5DF2\u6682\u505C\u81EA\u52A8\u4EA4\u6613\uFF0C\u8BF7\u4EBA\u5DE5\u786E\u8BA4\u5E76\u4FDD\u5B58\u914D\u7F6E\u540E\u6062\u590D";
+}
+function resolveSingleLegReferenceTime(group) {
+  const timestamps = [
+    Date.parse(group.updatedAt),
+    Date.parse(group.createdAt),
+    ...(group.items ?? []).flatMap((item) => [
+      item.openedAt ? Date.parse(item.openedAt) : Number.NaN,
+      item.closedAt ? Date.parse(item.closedAt) : Number.NaN
+    ])
+  ].filter((value) => Number.isFinite(value));
+  return timestamps.length > 0 ? Math.max(...timestamps) : Date.now();
+}
+function buildSingleLegDetectedReason(candidate, timeoutSeconds) {
+  const directionLabel = candidate.side === "expand" ? "\u6269\u65B9\u5411" : "\u7F29\u65B9\u5411";
+  const driftText = candidate.spreadDrift === null ? "" : `\uFF0C\u504F\u79FB ${candidate.spreadDrift}`;
+  return `\u68C0\u6D4B\u5230${directionLabel}\u5355\u817F\u98CE\u9669\uFF0C\u5DF2\u6301\u7EED\u8D85\u8FC7 ${timeoutSeconds} \u79D2${driftText}`;
+}
+function isSingleLegCooldownActive(state) {
+  return (state.cooldownUntil ?? 0) > Date.now();
+}
+function getSingleLegCooldownRemainingSeconds(state) {
+  if (!state.cooldownUntil) return 0;
+  return Math.max(0, Math.ceil((state.cooldownUntil - Date.now()) / 1e3));
+}
 function updateThresholdTracker(tracker, value, threshold, operator) {
   const matched = threshold !== null && value !== null && (operator === "<=" ? value <= threshold : value >= threshold);
   if (!matched) {
@@ -81095,6 +82228,16 @@ function parseChannelIds(raw) {
     return [];
   }
 }
+function parseAutoTradeNotifyLevels(raw) {
+  if (!raw) return ["warn", "error"];
+  try {
+    const parsed = JSON.parse(raw);
+    const levels = Array.isArray(parsed) ? parsed.filter((item) => item === "info" || item === "warn" || item === "error") : [];
+    return levels.length > 0 ? [...new Set(levels)] : ["warn", "error"];
+  } catch {
+    return ["warn", "error"];
+  }
+}
 function normalizeInput(input) {
   const symbolA = input.symbolA.trim();
   const symbolB = input.symbolB.trim();
@@ -81112,7 +82255,32 @@ function normalizeInput(input) {
     notifyLongThreshold: input.notifyLongThreshold ?? void 0,
     notifyShortThreshold: input.notifyShortThreshold ?? void 0,
     notifyStabilitySeconds: input.notifyStabilitySeconds ?? 3,
-    cooldownSeconds: input.cooldownSeconds ?? 60
+    cooldownSeconds: input.cooldownSeconds ?? 60,
+    autoTradeEnabled: input.autoTradeEnabled ?? false,
+    autoOpenExpandEnabled: input.autoOpenExpandEnabled ?? false,
+    autoOpenShrinkEnabled: input.autoOpenShrinkEnabled ?? false,
+    targetExpandGroups: input.targetExpandGroups ?? 0,
+    targetShrinkGroups: input.targetShrinkGroups ?? 0,
+    autoOpenExpandThreshold: input.autoOpenExpandThreshold ?? input.notifyLongThreshold ?? null,
+    autoOpenShrinkThreshold: input.autoOpenShrinkThreshold ?? input.notifyShortThreshold ?? null,
+    autoOpenStabilitySeconds: input.autoOpenStabilitySeconds ?? input.notifyStabilitySeconds ?? 3,
+    autoOpenCooldownSeconds: input.autoOpenCooldownSeconds ?? 15,
+    autoCloseEnabled: input.autoCloseEnabled ?? false,
+    autoCloseExpandEnabled: input.autoCloseExpandEnabled ?? false,
+    autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? false,
+    autoCloseExpandProtection: input.autoCloseExpandProtection ?? null,
+    autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? null,
+    autoCloseBatchCount: input.autoCloseBatchCount ?? 1,
+    autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? 5,
+    singleLegDetectEnabled: input.singleLegDetectEnabled ?? false,
+    singleLegTimeoutSeconds: input.singleLegTimeoutSeconds ?? 5,
+    singleLegPriceDriftThreshold: input.singleLegPriceDriftThreshold ?? null,
+    autoCloseSingleLegEnabled: input.autoCloseSingleLegEnabled ?? false,
+    autoCloseSingleLegCooldownSeconds: input.autoCloseSingleLegCooldownSeconds ?? 5,
+    autoCloseSingleLegMaxRetries: input.autoCloseSingleLegMaxRetries ?? 1,
+    singleLegNotifyEnabled: input.singleLegNotifyEnabled ?? false,
+    singleLegNotifyChannelIds: dedupeChannelIds(input.singleLegNotifyChannelIds ?? []),
+    singleLegNotifyLevels: dedupeAutoTradeNotifyLevels(input.singleLegNotifyLevels ?? ["warn", "error"])
   };
 }
 function normalizeUpdateInput(input, existing) {
@@ -81133,11 +82301,40 @@ function normalizeUpdateInput(input, existing) {
     notifyLongThreshold: input.notifyLongThreshold ?? existing.notify_expand_threshold,
     notifyShortThreshold: input.notifyShortThreshold ?? existing.notify_contract_threshold,
     notifyStabilitySeconds: input.notifyStabilitySeconds ?? existing.notify_stability_seconds,
-    cooldownSeconds: input.cooldownSeconds ?? existing.cooldown_seconds
+    cooldownSeconds: input.cooldownSeconds ?? existing.cooldown_seconds,
+    autoTradeEnabled: input.autoTradeEnabled ?? existing.auto_trade_enabled === 1,
+    autoOpenExpandEnabled: input.autoOpenExpandEnabled ?? existing.auto_open_expand_enabled === 1,
+    autoOpenShrinkEnabled: input.autoOpenShrinkEnabled ?? existing.auto_open_shrink_enabled === 1,
+    targetExpandGroups: input.targetExpandGroups ?? existing.target_expand_groups,
+    targetShrinkGroups: input.targetShrinkGroups ?? existing.target_shrink_groups,
+    autoOpenExpandThreshold: input.autoOpenExpandThreshold ?? existing.auto_open_expand_threshold,
+    autoOpenShrinkThreshold: input.autoOpenShrinkThreshold ?? existing.auto_open_shrink_threshold,
+    autoOpenStabilitySeconds: input.autoOpenStabilitySeconds ?? existing.auto_open_stability_seconds,
+    autoOpenCooldownSeconds: input.autoOpenCooldownSeconds ?? existing.auto_open_cooldown_seconds,
+    autoCloseEnabled: input.autoCloseEnabled ?? existing.auto_close_enabled === 1,
+    autoCloseExpandEnabled: input.autoCloseExpandEnabled ?? existing.auto_close_expand_enabled === 1,
+    autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? existing.auto_close_shrink_enabled === 1,
+    autoCloseExpandProtection: input.autoCloseExpandProtection ?? existing.auto_close_expand_protection,
+    autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? existing.auto_close_shrink_protection,
+    autoCloseBatchCount: input.autoCloseBatchCount ?? existing.auto_close_batch_count,
+    autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? existing.auto_close_cooldown_seconds,
+    singleLegDetectEnabled: input.singleLegDetectEnabled ?? existing.single_leg_detect_enabled === 1,
+    singleLegTimeoutSeconds: input.singleLegTimeoutSeconds ?? existing.single_leg_timeout_seconds,
+    singleLegPriceDriftThreshold: input.singleLegPriceDriftThreshold ?? existing.single_leg_price_drift_threshold,
+    autoCloseSingleLegEnabled: input.autoCloseSingleLegEnabled ?? existing.auto_close_single_leg_enabled === 1,
+    autoCloseSingleLegCooldownSeconds: input.autoCloseSingleLegCooldownSeconds ?? existing.auto_close_single_leg_cooldown_seconds,
+    autoCloseSingleLegMaxRetries: input.autoCloseSingleLegMaxRetries ?? existing.auto_close_single_leg_max_retries,
+    singleLegNotifyEnabled: input.singleLegNotifyEnabled ?? existing.single_leg_notify_enabled === 1,
+    singleLegNotifyChannelIds: dedupeChannelIds(input.singleLegNotifyChannelIds ?? parseChannelIds(existing.single_leg_notify_channel_ids)),
+    singleLegNotifyLevels: dedupeAutoTradeNotifyLevels(input.singleLegNotifyLevels ?? parseAutoTradeNotifyLevels(existing.single_leg_notify_levels))
   };
 }
 function dedupeChannelIds(channelIds) {
   return [...new Set(channelIds.filter((id) => Number.isInteger(id) && id > 0))];
+}
+function dedupeAutoTradeNotifyLevels(levels) {
+  const next = [...new Set(levels.filter((level) => level === "info" || level === "warn" || level === "error"))];
+  return next.length > 0 ? next : ["warn", "error"];
 }
 function validateThresholds(input) {
   if (input.lotsA !== void 0 && input.lotsA !== null && input.lotsA <= 0) {
@@ -81158,12 +82355,77 @@ function validateThresholds(input) {
   if (!Number.isInteger(input.cooldownSeconds) || input.cooldownSeconds < 0) {
     throw new ValidationError("cooldownSeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
   }
+  if (input.targetExpandGroups !== void 0 && input.targetExpandGroups !== null && (!Number.isInteger(input.targetExpandGroups) || input.targetExpandGroups < 0)) {
+    throw new ValidationError("targetExpandGroups \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (input.targetShrinkGroups !== void 0 && input.targetShrinkGroups !== null && (!Number.isInteger(input.targetShrinkGroups) || input.targetShrinkGroups < 0)) {
+    throw new ValidationError("targetShrinkGroups \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (input.autoOpenExpandThreshold !== void 0 && input.autoOpenExpandThreshold !== null && input.autoOpenExpandThreshold < 0) {
+    throw new ValidationError("autoOpenExpandThreshold \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (input.autoOpenShrinkThreshold !== void 0 && input.autoOpenShrinkThreshold !== null && input.autoOpenShrinkThreshold < 0) {
+    throw new ValidationError("autoOpenShrinkThreshold \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (!Number.isInteger(input.autoOpenStabilitySeconds) || input.autoOpenStabilitySeconds < 0) {
+    throw new ValidationError("autoOpenStabilitySeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (!Number.isInteger(input.autoOpenCooldownSeconds) || input.autoOpenCooldownSeconds < 0) {
+    throw new ValidationError("autoOpenCooldownSeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (input.autoCloseExpandProtection !== void 0 && input.autoCloseExpandProtection !== null && input.autoCloseExpandProtection < 0) {
+    throw new ValidationError("autoCloseExpandProtection \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (input.autoCloseShrinkProtection !== void 0 && input.autoCloseShrinkProtection !== null && input.autoCloseShrinkProtection < 0) {
+    throw new ValidationError("autoCloseShrinkProtection \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (!Number.isInteger(input.autoCloseBatchCount) || input.autoCloseBatchCount < 1) {
+    throw new ValidationError("autoCloseBatchCount \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
+  }
+  if (!Number.isInteger(input.autoCloseCooldownSeconds) || input.autoCloseCooldownSeconds < 0) {
+    throw new ValidationError("autoCloseCooldownSeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (!Number.isInteger(input.singleLegTimeoutSeconds) || input.singleLegTimeoutSeconds < 0) {
+    throw new ValidationError("singleLegTimeoutSeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (input.singleLegPriceDriftThreshold !== void 0 && input.singleLegPriceDriftThreshold !== null && input.singleLegPriceDriftThreshold < 0) {
+    throw new ValidationError("singleLegPriceDriftThreshold \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (!Number.isInteger(input.autoCloseSingleLegCooldownSeconds) || input.autoCloseSingleLegCooldownSeconds < 0) {
+    throw new ValidationError("autoCloseSingleLegCooldownSeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (!Number.isInteger(input.autoCloseSingleLegMaxRetries) || input.autoCloseSingleLegMaxRetries < 0) {
+    throw new ValidationError("autoCloseSingleLegMaxRetries \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
+  }
+  if (input.singleLegNotifyLevels && input.singleLegNotifyLevels.length === 0) {
+    throw new ValidationError("singleLegNotifyLevels \u81F3\u5C11\u8981\u4FDD\u7559\u4E00\u4E2A\u901A\u77E5\u7EA7\u522B");
+  }
 }
 function roundNumber(value) {
   return Math.round(value * 1e5) / 1e5;
 }
 function toSpreadDirectionLabel(direction) {
   return direction === "sellA_buyB" ? "A\u5356B\u4E70" : "A\u4E70B\u5356";
+}
+function toAutoTradeNotifyActionLabel(action) {
+  switch (action) {
+    case "auto.open.executed":
+      return "\u81EA\u52A8\u5F00\u4ED3\u5DF2\u6267\u884C";
+    case "auto.open.failed":
+      return "\u81EA\u52A8\u5F00\u4ED3\u5931\u8D25";
+    case "auto.close.executed":
+      return "\u81EA\u52A8\u5E73\u4ED3\u5DF2\u6267\u884C";
+    case "auto.close.failed":
+      return "\u81EA\u52A8\u5E73\u4ED3\u5931\u8D25";
+    case "single-leg.detected":
+      return "\u5355\u817F\u98CE\u9669\u5DF2\u786E\u8BA4";
+    case "single-leg.auto-close.executed":
+      return "\u81EA\u52A8\u5E73\u5355\u817F\u5DF2\u6267\u884C";
+    case "single-leg.auto-close.failed":
+      return "\u81EA\u52A8\u5E73\u5355\u817F\u5931\u8D25";
+    default:
+      return action;
+  }
 }
 function buildSpreadOrderGroupName(baseName, directionLabel) {
   return `${baseName}-${directionLabel}`;
@@ -81241,8 +82503,172 @@ function toSpreadSubscriptionDto(row, runtimeStarted) {
     notifyShortThreshold: row.notify_contract_threshold,
     notifyStabilitySeconds: row.notify_stability_seconds,
     cooldownSeconds: row.cooldown_seconds,
+    autoTrade: {
+      enabled: row.auto_trade_enabled === 1,
+      autoOpenExpandEnabled: row.auto_open_expand_enabled === 1,
+      autoOpenShrinkEnabled: row.auto_open_shrink_enabled === 1,
+      targetExpandGroups: row.target_expand_groups,
+      targetShrinkGroups: row.target_shrink_groups,
+      autoOpenExpandThreshold: row.auto_open_expand_threshold,
+      autoOpenShrinkThreshold: row.auto_open_shrink_threshold,
+      autoOpenStabilitySeconds: row.auto_open_stability_seconds,
+      autoOpenCooldownSeconds: row.auto_open_cooldown_seconds,
+      autoCloseEnabled: row.auto_close_enabled === 1,
+      autoCloseExpandEnabled: row.auto_close_expand_enabled === 1,
+      autoCloseShrinkEnabled: row.auto_close_shrink_enabled === 1,
+      autoCloseExpandProtection: row.auto_close_expand_protection,
+      autoCloseShrinkProtection: row.auto_close_shrink_protection,
+      autoCloseBatchCount: row.auto_close_batch_count,
+      autoCloseCooldownSeconds: row.auto_close_cooldown_seconds,
+      singleLegDetectEnabled: row.single_leg_detect_enabled === 1,
+      singleLegTimeoutSeconds: row.single_leg_timeout_seconds,
+      singleLegPriceDriftThreshold: row.single_leg_price_drift_threshold,
+      autoCloseSingleLegEnabled: row.auto_close_single_leg_enabled === 1,
+      autoCloseSingleLegCooldownSeconds: row.auto_close_single_leg_cooldown_seconds,
+      autoCloseSingleLegMaxRetries: row.auto_close_single_leg_max_retries,
+      singleLegNotifyEnabled: row.single_leg_notify_enabled === 1,
+      singleLegNotifyChannelIds: parseChannelIds(row.single_leg_notify_channel_ids),
+      singleLegNotifyLevels: parseAutoTradeNotifyLevels(row.single_leg_notify_levels)
+    },
     createdAt: row.created_at,
     updatedAt: row.updated_at
+  };
+}
+function toAutoTradeLogDto(row) {
+  return {
+    id: row.id,
+    accountGroupId: row.account_group_id,
+    subscriptionId: row.subscription_id,
+    phase: row.phase,
+    action: row.action,
+    direction: row.direction,
+    level: row.level,
+    reason: row.reason,
+    runtimeState: row.runtime_state,
+    longSpread: row.long_spread,
+    shortSpread: row.short_spread,
+    longStableSeconds: row.long_stable_seconds,
+    shortStableSeconds: row.short_stable_seconds,
+    requestId: row.request_id,
+    metadata: parseLogMetadata(row.metadata),
+    createdAt: row.created_at
+  };
+}
+function parseLogMetadata(raw) {
+  if (!raw) return null;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+function getTrackerStableSeconds(tracker) {
+  if (tracker.activeSince === null) return 0;
+  return roundNumber((Date.now() - tracker.activeSince) / 1e3);
+}
+function getCooldownRemainingSeconds(side) {
+  if (!side.cooldownUntil) return 0;
+  return Math.max(0, roundNumber((side.cooldownUntil - Date.now()) / 1e3));
+}
+function getAutoTradeLongStableSeconds(state) {
+  return getTrackerStableSeconds(state.autoOpenExpandTracker);
+}
+function getAutoTradeShrinkStableSeconds(state) {
+  return getTrackerStableSeconds(state.autoOpenShrinkTracker);
+}
+function getAutoOpenPendingReason(row, snapshot, state, side) {
+  if (side === "expand") {
+    if (row.auto_open_expand_threshold === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5F00\u6269\u9608\u503C";
+    if (snapshot.longSpread === null) return "\u5F53\u524D\u6269\u4EF7\u7F3A\u5931\uFF0C\u65E0\u6CD5\u5224\u65AD\u81EA\u52A8\u5F00\u6269";
+    if (snapshot.longSpread > row.auto_open_expand_threshold) {
+      return `\u5F53\u524D\u6269\u4EF7 ${roundNumber(snapshot.longSpread)} \u672A\u4F4E\u4E8E\u81EA\u52A8\u5F00\u6269\u9608\u503C ${roundNumber(row.auto_open_expand_threshold)}`;
+    }
+    const stable2 = getAutoTradeLongStableSeconds(state);
+    return `\u5F53\u524D\u5DF2\u6EE1\u8DB3\u5F00\u6269\u9608\u503C\uFF0C\u7A33\u5B9A ${stable2} \u79D2 / \u9700 ${row.auto_open_stability_seconds} \u79D2`;
+  }
+  if (row.auto_open_shrink_threshold === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5F00\u7F29\u9608\u503C";
+  if (snapshot.shortSpread === null) return "\u5F53\u524D\u7F29\u4EF7\u7F3A\u5931\uFF0C\u65E0\u6CD5\u5224\u65AD\u81EA\u52A8\u5F00\u7F29";
+  if (snapshot.shortSpread < row.auto_open_shrink_threshold) {
+    return `\u5F53\u524D\u7F29\u4EF7 ${roundNumber(snapshot.shortSpread)} \u672A\u9AD8\u4E8E\u81EA\u52A8\u5F00\u7F29\u9608\u503C ${roundNumber(row.auto_open_shrink_threshold)}`;
+  }
+  const stable = getAutoTradeShrinkStableSeconds(state);
+  return `\u5F53\u524D\u5DF2\u6EE1\u8DB3\u5F00\u7F29\u9608\u503C\uFF0C\u7A33\u5B9A ${stable} \u79D2 / \u9700 ${row.auto_open_stability_seconds} \u79D2`;
+}
+function isAutoOpenExpandTriggered(row, snapshot, state) {
+  return row.auto_open_expand_threshold !== null && snapshot.longSpread !== null && snapshot.longSpread <= row.auto_open_expand_threshold && getAutoTradeLongStableSeconds(state) >= row.auto_open_stability_seconds;
+}
+function isAutoOpenShrinkTriggered(row, snapshot, state) {
+  return row.auto_open_shrink_threshold !== null && snapshot.shortSpread !== null && snapshot.shortSpread >= row.auto_open_shrink_threshold && getAutoTradeShrinkStableSeconds(state) >= row.auto_open_stability_seconds;
+}
+function getAutoCloseProtectionError(row, snapshot, side) {
+  const spreadAdj = (snapshot.longSpread ?? 0) - (snapshot.shortSpread ?? 0);
+  if (side === "expand") {
+    const protection2 = row.auto_close_expand_protection;
+    if (protection2 === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5E73\u6269\u4FDD\u62A4\u4EF7";
+    const limitPrice = protection2 + spreadAdj;
+    if (snapshot.shortSpread !== null && limitPrice <= snapshot.shortSpread) {
+      return `\u5E73\u6269\u9650\u5236\u4EF7 ${roundNumber(limitPrice)} \u9700\u9AD8\u4E8E\u5F53\u524D\u7F29\u4EF7 ${roundNumber(snapshot.shortSpread)}`;
+    }
+    if (snapshot.longSpread === null || snapshot.longSpread <= limitPrice) {
+      return `\u5F53\u524D\u6269\u4EF7 ${snapshot.longSpread === null ? "\u2014" : roundNumber(snapshot.longSpread)} \u672A\u9AD8\u4E8E\u5E73\u6269\u9650\u5236\u4EF7 ${roundNumber(limitPrice)}`;
+    }
+    return "";
+  }
+  const protection = row.auto_close_shrink_protection;
+  if (protection === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5E73\u7F29\u4FDD\u62A4\u4EF7";
+  const shrinkClosePrice = protection - spreadAdj;
+  if (snapshot.longSpread !== null && shrinkClosePrice >= snapshot.longSpread) {
+    return `\u5E73\u7F29\u9650\u5236\u4EF7 ${roundNumber(shrinkClosePrice)} \u9700\u4F4E\u4E8E\u5F53\u524D\u6269\u4EF7 ${roundNumber(snapshot.longSpread)}`;
+  }
+  if (snapshot.shortSpread === null || snapshot.shortSpread >= shrinkClosePrice) {
+    return `\u5F53\u524D\u7F29\u4EF7 ${snapshot.shortSpread === null ? "\u2014" : roundNumber(snapshot.shortSpread)} \u672A\u4F4E\u4E8E\u5E73\u7F29\u9650\u5236\u4EF7 ${roundNumber(shrinkClosePrice)}`;
+  }
+  return "";
+}
+function buildAutoTradeRequestId(subscriptionId, side, action) {
+  return `auto-${action}-${side}-${subscriptionId}-${Date.now()}`;
+}
+function isCooldownActive(side) {
+  if (!side.cooldownUntil) return false;
+  const active = side.cooldownUntil > Date.now();
+  if (!active) {
+    side.cooldownUntil = null;
+  }
+  return active;
+}
+function toAutoTradeSideRuntimeDto(side, currentGroupCount, targetGroupCount) {
+  const now = Date.now();
+  return {
+    status: isCooldownActive(side) ? side.status : side.opening ? "opening" : side.closing ? "closing" : "idle",
+    opening: side.opening,
+    closing: side.closing,
+    cooldownRemainingSeconds: side.cooldownUntil ? Math.max(0, roundNumber((side.cooldownUntil - now) / 1e3)) : 0,
+    lastActionAt: side.lastActionAt ? new Date(side.lastActionAt).toISOString() : null,
+    lastOpenAt: side.lastOpenAt ? new Date(side.lastOpenAt).toISOString() : null,
+    lastCloseAt: side.lastCloseAt ? new Date(side.lastCloseAt).toISOString() : null,
+    lastReason: side.lastReason,
+    lastError: side.lastError,
+    currentGroupCount,
+    targetGroupCount
+  };
+}
+function parseSpreadRemark2(remark) {
+  if (!remark) {
+    return { subscriptionId: null, direction: null };
+  }
+  const parts = remark.split(";").map((item) => item.trim()).filter(Boolean);
+  const map = /* @__PURE__ */ new Map();
+  for (const part of parts) {
+    const eq = part.indexOf("=");
+    if (eq <= 0) continue;
+    map.set(part.slice(0, eq).trim(), part.slice(eq + 1).trim());
+  }
+  const subscriptionIdRaw = Number(map.get("spreadSubscriptionId"));
+  const directionRaw = map.get("direction");
+  return {
+    subscriptionId: Number.isInteger(subscriptionIdRaw) && subscriptionIdRaw > 0 ? subscriptionIdRaw : null,
+    direction: directionRaw === "sellA_buyB" || directionRaw === "sellB_buyA" ? directionRaw : null
   };
 }
 function toPanelAccount(account) {
@@ -81842,6 +83268,7 @@ async function buildAppContext(config2) {
     pushChannel: new PushChannelRepository(db),
     accountGroup: new AccountGroupRepository(db),
     spreadSubscription: new SpreadSubscriptionRepository(db),
+    autoTradeLog: new AutoTradeLogRepository(db),
     orderGroup: new OrderGroupRepository(db)
   };
   const pushService = new PushService(repos.pushChannel, config2.ACCOUNT_ENCRYPTION_KEY);
@@ -81855,7 +83282,7 @@ async function buildAppContext(config2) {
     pushService,
     repos.spreadSubscription
   );
-  const spreadService = new SpreadService(repos.spreadSubscription, repos.accountGroup, wsManager, mt5Sdk, pushService, orderGroupService);
+  const spreadService = new SpreadService(repos.spreadSubscription, repos.autoTradeLog, repos.accountGroup, wsManager, mt5Sdk, pushService, orderGroupService);
   const accountService = new AccountService(repos.mt5Account, mt5Sdk, config2.ACCOUNT_ENCRYPTION_KEY);
   const accountHeartbeatService = new AccountHeartbeatService(accountService, wsManager, realtimeApp);
   orderGroupService.setSpreadService(spreadService);
@@ -85567,7 +86994,32 @@ var spreadSubscriptionBody = external_exports.object({
   notifyLongThreshold: external_exports.number().min(0).optional(),
   notifyShortThreshold: external_exports.number().min(0).optional(),
   notifyStabilitySeconds: external_exports.number().int().min(0).optional(),
-  cooldownSeconds: external_exports.number().int().min(0).optional()
+  cooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoTradeEnabled: external_exports.boolean().optional(),
+  autoOpenExpandEnabled: external_exports.boolean().optional(),
+  autoOpenShrinkEnabled: external_exports.boolean().optional(),
+  targetExpandGroups: external_exports.number().int().min(0).optional(),
+  targetShrinkGroups: external_exports.number().int().min(0).optional(),
+  autoOpenExpandThreshold: external_exports.number().min(0).nullable().optional(),
+  autoOpenShrinkThreshold: external_exports.number().min(0).nullable().optional(),
+  autoOpenStabilitySeconds: external_exports.number().int().min(0).optional(),
+  autoOpenCooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoCloseEnabled: external_exports.boolean().optional(),
+  autoCloseExpandEnabled: external_exports.boolean().optional(),
+  autoCloseShrinkEnabled: external_exports.boolean().optional(),
+  autoCloseExpandProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseShrinkProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseBatchCount: external_exports.number().int().min(1).optional(),
+  autoCloseCooldownSeconds: external_exports.number().int().min(0).optional(),
+  singleLegDetectEnabled: external_exports.boolean().optional(),
+  singleLegTimeoutSeconds: external_exports.number().int().min(0).optional(),
+  singleLegPriceDriftThreshold: external_exports.number().min(0).nullable().optional(),
+  autoCloseSingleLegEnabled: external_exports.boolean().optional(),
+  autoCloseSingleLegCooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoCloseSingleLegMaxRetries: external_exports.number().int().min(0).optional(),
+  singleLegNotifyEnabled: external_exports.boolean().optional(),
+  singleLegNotifyChannelIds: external_exports.array(external_exports.number().int().positive()).optional(),
+  singleLegNotifyLevels: external_exports.array(external_exports.enum(["info", "warn", "error"])).min(1).optional()
 });
 var updateSpreadSubscriptionBody = external_exports.object({
   name: external_exports.string().min(1).optional(),
@@ -85581,7 +87033,42 @@ var updateSpreadSubscriptionBody = external_exports.object({
   notifyLongThreshold: external_exports.number().min(0).nullable().optional(),
   notifyShortThreshold: external_exports.number().min(0).nullable().optional(),
   notifyStabilitySeconds: external_exports.number().int().min(0).optional(),
-  cooldownSeconds: external_exports.number().int().min(0).optional()
+  cooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoTradeEnabled: external_exports.boolean().optional(),
+  autoOpenExpandEnabled: external_exports.boolean().optional(),
+  autoOpenShrinkEnabled: external_exports.boolean().optional(),
+  targetExpandGroups: external_exports.number().int().min(0).optional(),
+  targetShrinkGroups: external_exports.number().int().min(0).optional(),
+  autoOpenExpandThreshold: external_exports.number().min(0).nullable().optional(),
+  autoOpenShrinkThreshold: external_exports.number().min(0).nullable().optional(),
+  autoOpenStabilitySeconds: external_exports.number().int().min(0).optional(),
+  autoOpenCooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoCloseEnabled: external_exports.boolean().optional(),
+  autoCloseExpandEnabled: external_exports.boolean().optional(),
+  autoCloseShrinkEnabled: external_exports.boolean().optional(),
+  autoCloseExpandProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseShrinkProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseBatchCount: external_exports.number().int().min(1).optional(),
+  autoCloseCooldownSeconds: external_exports.number().int().min(0).optional(),
+  singleLegDetectEnabled: external_exports.boolean().optional(),
+  singleLegTimeoutSeconds: external_exports.number().int().min(0).optional(),
+  singleLegPriceDriftThreshold: external_exports.number().min(0).nullable().optional(),
+  autoCloseSingleLegEnabled: external_exports.boolean().optional(),
+  autoCloseSingleLegCooldownSeconds: external_exports.number().int().min(0).optional(),
+  autoCloseSingleLegMaxRetries: external_exports.number().int().min(0).optional(),
+  singleLegNotifyEnabled: external_exports.boolean().optional(),
+  singleLegNotifyChannelIds: external_exports.array(external_exports.number().int().positive()).optional(),
+  singleLegNotifyLevels: external_exports.array(external_exports.enum(["info", "warn", "error"])).min(1).optional()
+});
+var autoTradeLogQuery = external_exports.object({
+  accountGroupId: external_exports.coerce.number().int().positive().optional(),
+  subscriptionId: external_exports.coerce.number().int().positive().optional(),
+  phase: external_exports.enum(["decision", "execution", "runtime"]).optional(),
+  level: external_exports.enum(["info", "warn", "error"]).optional(),
+  direction: external_exports.enum(["expand", "shrink"]).optional(),
+  action: external_exports.string().min(1).optional(),
+  page: external_exports.coerce.number().int().min(1).default(1),
+  pageSize: external_exports.coerce.number().int().min(1).max(200).default(50)
 });
 var placeSpreadOrderBody = external_exports.object({
   subscriptionId: external_exports.number().int().positive(),
@@ -85621,8 +87108,86 @@ var spreadSubscriptionDto = {
     notifyShortThreshold: { type: "number", nullable: true },
     notifyStabilitySeconds: { type: "integer" },
     cooldownSeconds: { type: "integer" },
+    autoTrade: {
+      type: "object",
+      properties: {
+        enabled: { type: "boolean" },
+        autoOpenExpandEnabled: { type: "boolean" },
+        autoOpenShrinkEnabled: { type: "boolean" },
+        targetExpandGroups: { type: "integer" },
+        targetShrinkGroups: { type: "integer" },
+        autoOpenExpandThreshold: { type: "number", nullable: true },
+        autoOpenShrinkThreshold: { type: "number", nullable: true },
+        autoOpenStabilitySeconds: { type: "integer" },
+        autoOpenCooldownSeconds: { type: "integer" },
+        autoCloseEnabled: { type: "boolean" },
+        autoCloseExpandEnabled: { type: "boolean" },
+        autoCloseShrinkEnabled: { type: "boolean" },
+        autoCloseExpandProtection: { type: "number", nullable: true },
+        autoCloseShrinkProtection: { type: "number", nullable: true },
+        autoCloseBatchCount: { type: "integer" },
+        autoCloseCooldownSeconds: { type: "integer" },
+        singleLegDetectEnabled: { type: "boolean" },
+        singleLegTimeoutSeconds: { type: "integer" },
+        singleLegPriceDriftThreshold: { type: "number", nullable: true },
+        autoCloseSingleLegEnabled: { type: "boolean" },
+        autoCloseSingleLegCooldownSeconds: { type: "integer" },
+        autoCloseSingleLegMaxRetries: { type: "integer" },
+        singleLegNotifyEnabled: { type: "boolean" },
+        singleLegNotifyChannelIds: { type: "array", items: { type: "integer" } },
+        singleLegNotifyLevels: { type: "array", items: { type: "string", enum: ["info", "warn", "error"] } }
+      }
+    },
     createdAt: { type: "string" },
     updatedAt: { type: "string" }
+  }
+};
+var autoTradeLogDto = {
+  type: "object",
+  properties: {
+    id: { type: "integer" },
+    accountGroupId: { type: "integer" },
+    subscriptionId: { type: "integer" },
+    phase: { type: "string", enum: ["decision", "execution", "runtime"] },
+    action: { type: "string" },
+    direction: { type: "string", enum: ["expand", "shrink"], nullable: true },
+    level: { type: "string", enum: ["info", "warn", "error"] },
+    reason: { type: "string", nullable: true },
+    runtimeState: { type: "string", nullable: true },
+    longSpread: { type: "number", nullable: true },
+    shortSpread: { type: "number", nullable: true },
+    longStableSeconds: { type: "number", nullable: true },
+    shortStableSeconds: { type: "number", nullable: true },
+    requestId: { type: "string", nullable: true },
+    metadata: { type: "object", nullable: true, additionalProperties: true },
+    createdAt: { type: "string" }
+  }
+};
+var autoTradeRuntimeSideDto = {
+  type: "object",
+  properties: {
+    status: { type: "string", enum: ["idle", "opening", "open_cooldown", "closing", "close_cooldown"] },
+    opening: { type: "boolean" },
+    closing: { type: "boolean" },
+    cooldownRemainingSeconds: { type: "number" },
+    lastActionAt: { type: "string", nullable: true },
+    lastOpenAt: { type: "string", nullable: true },
+    lastCloseAt: { type: "string", nullable: true },
+    lastReason: { type: "string", nullable: true },
+    lastError: { type: "string", nullable: true },
+    currentGroupCount: { type: "integer" },
+    targetGroupCount: { type: "integer" }
+  }
+};
+var autoTradeRuntimeDto = {
+  type: "object",
+  properties: {
+    subscriptionId: { type: "integer" },
+    accountGroupId: { type: "integer" },
+    enabled: { type: "boolean" },
+    locked: { type: "boolean" },
+    expand: autoTradeRuntimeSideDto,
+    shrink: autoTradeRuntimeSideDto
   }
 };
 var spreadQuoteDto = {
@@ -85888,6 +87453,56 @@ function registerSpreadRoutes(app, spreadService) {
     const subscriptionId = parseId7(request.params.subscriptionId, "subscriptionId");
     await spreadService.delete(accountGroupId, subscriptionId);
     return reply.status(204).send();
+  });
+  app.get("/api/v1/auto-trade/logs", {
+    schema: {
+      tags: ["Spread"],
+      summary: "\u81EA\u52A8\u4EA4\u6613\u65E5\u5FD7\u5217\u8868",
+      querystring: zToSchema(autoTradeLogQuery),
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            data: { type: "array", items: autoTradeLogDto },
+            total: { type: "integer" },
+            page: { type: "integer" },
+            pageSize: { type: "integer" }
+          }
+        },
+        400: errorResponse
+      }
+    }
+  }, async (request) => {
+    const parsed = autoTradeLogQuery.safeParse(request.query);
+    if (!parsed.success) {
+      throw new ValidationError("Invalid querystring", parsed.error.flatten().fieldErrors);
+    }
+    const result = await spreadService.listAutoTradeLogs(parsed.data);
+    return {
+      data: result.items,
+      total: result.total,
+      page: result.page,
+      pageSize: result.pageSize
+    };
+  });
+  app.get("/api/v1/auto-trade/runtime", {
+    schema: {
+      tags: ["Spread"],
+      summary: "\u81EA\u52A8\u4EA4\u6613\u8FD0\u884C\u6001\u5217\u8868",
+      querystring: {
+        type: "object",
+        properties: {
+          accountGroupId: { type: "integer", minimum: 1 }
+        }
+      },
+      response: {
+        200: { type: "object", properties: { data: { type: "array", items: autoTradeRuntimeDto } } }
+      }
+    }
+  }, async (request) => {
+    const accountGroupIdRaw = request.query.accountGroupId;
+    const accountGroupId = accountGroupIdRaw === void 0 ? void 0 : parseId7(String(accountGroupIdRaw), "accountGroupId");
+    return { data: await spreadService.listAutoTradeRuntime(accountGroupId) };
   });
   app.get("/api/v1/account-groups/:accountGroupId/spread-panel", {
     schema: {

@@ -233,6 +233,29 @@ export class AccountService {
         const sessionId = await this.resolveSessionId(accountId);
         return this.mt5Sdk.session.ping(sessionId);
     }
+    async getAccountInfo(accountId) {
+        const sessionId = await this.resolveSessionId(accountId);
+        const session = await this.mt5Sdk.session.get(sessionId);
+        const account = session.account;
+        if (!account) {
+            throw new ServiceUnavailableError(`MT5 session ${sessionId} did not return account info`);
+        }
+        return toAccountInfoDto(accountId, sessionId, session);
+    }
+    async listConnectedAccountInfos() {
+        const rows = await this.repo.findAll();
+        const connectedRows = rows.filter((row) => row.session_id);
+        const results = await Promise.allSettled(connectedRows.map(async (row) => {
+            const session = await this.mt5Sdk.session.get(row.session_id);
+            if (!session.account) {
+                throw new ServiceUnavailableError(`MT5 session ${row.session_id} did not return account info`);
+            }
+            return toAccountInfoDto(row.id, row.session_id, session);
+        }));
+        return results
+            .filter((result) => result.status === 'fulfilled')
+            .map((result) => result.value);
+    }
     async addSubscriptions(accountId, symbols) {
         if (!symbols.length) {
             throw new ValidationError('symbols must not be empty');
@@ -394,6 +417,26 @@ function toDto(row) {
         })(),
         createdAt: row.created_at,
         updatedAt: row.updated_at,
+    };
+}
+function toAccountInfoDto(accountId, sessionId, session) {
+    const account = session.account;
+    return {
+        accountId,
+        sessionId,
+        login: account.login,
+        userName: account.userName,
+        balance: account.balance,
+        profit: session.accountProfit ?? null,
+        equity: session.accountEquity ?? null,
+        margin: session.accountMargin ?? null,
+        freeMargin: session.accountFreeMargin ?? null,
+        marginLevel: session.marginLevel ?? null,
+        credit: account.credit ?? null,
+        leverage: account.leverage ?? null,
+        country: account.country ?? null,
+        email: account.email ?? null,
+        accountCurrency: session.accountCurrency ?? null,
     };
 }
 //# sourceMappingURL=account.service.js.map

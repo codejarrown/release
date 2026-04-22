@@ -10,6 +10,8 @@ import * as m008 from './migrations/008_spread_subscriptions.js';
 import * as m009 from './migrations/009_spread_subscription_thresholds.js';
 import * as m010 from './migrations/010_spread_subscription_lots.js';
 import * as m011 from './migrations/011_account_reconnect_fields.js';
+import * as m012 from './migrations/012_order_group_spreads.js';
+import * as m013 from './migrations/013_auto_trade.js';
 const migrations = {
     '001_initial': m001,
     '002_accounts_redesign': m002,
@@ -22,6 +24,8 @@ const migrations = {
     '009_spread_subscription_thresholds': m009,
     '010_spread_subscription_lots': m010,
     '011_account_reconnect_fields': m011,
+    '012_order_group_spreads': m012,
+    '013_auto_trade': m013,
 };
 class StaticMigrationProvider {
     async getMigrations() {

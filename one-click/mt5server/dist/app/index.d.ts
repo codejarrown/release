@@ -9,6 +9,7 @@ import { PushChannelRepository } from '../db/repositories/push-channel.repositor
 import { AccountGroupRepository } from '../db/repositories/account-group.repository.js';
 import { OrderGroupRepository } from '../db/repositories/order-group.repository.js';
 import { SpreadSubscriptionRepository } from '../db/repositories/spread-subscription.repository.js';
+import { AutoTradeLogRepository } from '../db/repositories/auto-trade-log.repository.js';
 import { AccountService } from '../services/account.service.js';
 import { AccountGroupService } from '../services/account-group.service.js';
 import { OrderGroupService } from '../services/order-group.service.js';
@@ -28,6 +29,7 @@ export interface AppContext {
         pushChannel: PushChannelRepository;
         accountGroup: AccountGroupRepository;
         spreadSubscription: SpreadSubscriptionRepository;
+        autoTradeLog: AutoTradeLogRepository;
         orderGroup: OrderGroupRepository;
     };
     services: {

@@ -2,6 +2,7 @@ import { EventEmitter } from 'node:events';
 import type { IOrderGroupRepository, OrderGroupListFilter, OrderGroupSummaryFilter } from '../db/repositories/order-group.repository.js';
 import type { IAccountGroupRepository } from '../db/repositories/account-group.repository.js';
 import type { IMt5AccountRepository } from '../db/repositories/mt5-account.repository.js';
+import type { ISpreadSubscriptionRepository } from '../db/repositories/spread-subscription.repository.js';
 import type { Mt5ApiSdk } from '../integrations/mt5/sdk/index.js';
 import type { PushService } from './push/index.js';
 import type { SpreadService } from './spread.service.js';
@@ -31,6 +32,8 @@ export interface OrderGroupDto {
     accountGroupName: string | null;
     isFullyClosed: boolean;
     remark: string | null;
+    openSpread: number | null;
+    closeSpread: number | null;
     totalProfit: number;
     openCount: number;
     closedCount: number;
@@ -92,8 +95,9 @@ export declare class OrderGroupService extends EventEmitter {
     private readonly accountRepo;
     private readonly mt5Sdk;
     private readonly pushService;
+    private readonly spreadSubscriptionRepo?;
     private spreadService;
-    constructor(orderGroupRepo: IOrderGroupRepository, accountGroupRepo: IAccountGroupRepository, accountRepo: IMt5AccountRepository, mt5Sdk: Mt5ApiSdk, pushService: PushService);
+    constructor(orderGroupRepo: IOrderGroupRepository, accountGroupRepo: IAccountGroupRepository, accountRepo: IMt5AccountRepository, mt5Sdk: Mt5ApiSdk, pushService: PushService, spreadSubscriptionRepo?: ISpreadSubscriptionRepository | undefined);
     setSpreadService(spreadService: Pick<SpreadService, 'placeOrder'>): void;
     list(filter: OrderGroupListFilter & {
         page?: number;
@@ -115,5 +119,7 @@ export declare class OrderGroupService extends EventEmitter {
     private executeSingleClose;
     private toDto;
     private publishGroupState;
+    private computePersistedSpread;
+    private resolveSpreadHint;
 }
 //# sourceMappingURL=order-group.service.d.ts.map
