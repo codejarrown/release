@@ -1,1 +1,0 @@
-{"version":3,"file":"index.d.ts","sourceRoot":"","sources":["../../../src/db/kysely/index.ts"],"names":[],"mappings":"AACA,OAAO,EAAE,MAAM,EAAiB,MAAM,QAAQ,CAAC;AAC/C,OAAO,KAAK,EAAE,QAAQ,EAAE,MAAM,eAAe,CAAC;AAC9C,OAAO,KAAK,EAAE,SAAS,EAAE,MAAM,uBAAuB,CAAC;AAIvD,YAAY,EAAE,QAAQ,EAAE,MAAM,eAAe,CAAC;AAE9C,wBAAgB,cAAc,CAAC,MAAM,EAAE,SAAS,GAAG,MAAM,CAAC,QAAQ,CAAC,CAclE"}

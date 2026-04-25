@@ -1,1 +1,0 @@
-{"version":3,"file":"007_default_subscriptions.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/007_default_subscriptions.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAE1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAQ3D;AAED,wBAAsB,IAAI,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAK7D"}

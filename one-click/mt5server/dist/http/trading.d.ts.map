@@ -1,1 +1,0 @@
-{"version":3,"file":"trading.d.ts","sourceRoot":"","sources":["../../src/http/trading.ts"],"names":[],"mappings":"AAAA,OAAO,KAAK,EAAE,eAAe,EAAE,MAAM,SAAS,CAAC;AAE/C,OAAO,KAAK,EAAE,cAAc,EAAE,MAAM,gCAAgC,CAAC;AACrE,OAAO,KAAK,EAAE,SAAS,EAAE,MAAM,kCAAkC,CAAC;AAqDlE,wBAAgB,qBAAqB,CACnC,GAAG,EAAE,eAAe,EACpB,cAAc,EAAE,cAAc,EAC9B,MAAM,EAAE,SAAS,QA2HlB"}

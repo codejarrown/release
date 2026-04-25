@@ -1,1 +1,0 @@
-{"version":3,"file":"002_accounts_redesign.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/002_accounts_redesign.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAE1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAuC3D;AAED,wBAAsB,IAAI,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAE7D"}

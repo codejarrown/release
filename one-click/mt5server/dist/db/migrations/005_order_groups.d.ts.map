@@ -1,1 +1,0 @@
-{"version":3,"file":"005_order_groups.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/005_order_groups.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAE1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAkE3D;AAED,wBAAsB,IAAI,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAG7D"}
