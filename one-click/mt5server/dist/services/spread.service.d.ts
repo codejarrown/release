@@ -26,6 +26,7 @@ export interface AutoTradeConfigDto {
     autoCloseShrinkEnabled: boolean;
     autoCloseExpandProtection: number | null;
     autoCloseShrinkProtection: number | null;
+    autoCloseStabilitySeconds: number;
     autoCloseBatchCount: number;
     autoCloseCooldownSeconds: number;
     singleLegDetectEnabled: boolean;
@@ -119,6 +120,7 @@ export interface CreateSpreadSubscriptionInput {
     autoCloseShrinkEnabled?: boolean;
     autoCloseExpandProtection?: number | null;
     autoCloseShrinkProtection?: number | null;
+    autoCloseStabilitySeconds?: number;
     autoCloseBatchCount?: number;
     autoCloseCooldownSeconds?: number;
     singleLegDetectEnabled?: boolean;
@@ -158,6 +160,7 @@ export interface UpdateSpreadSubscriptionInput {
     autoCloseShrinkEnabled?: boolean;
     autoCloseExpandProtection?: number | null;
     autoCloseShrinkProtection?: number | null;
+    autoCloseStabilitySeconds?: number;
     autoCloseBatchCount?: number;
     autoCloseCooldownSeconds?: number;
     singleLegDetectEnabled?: boolean;

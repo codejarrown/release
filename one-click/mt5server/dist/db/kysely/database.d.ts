@@ -104,6 +104,7 @@ export interface SpreadSubscriptionTable {
     auto_close_shrink_enabled: Generated<number>;
     auto_close_expand_protection: number | null;
     auto_close_shrink_protection: number | null;
+    auto_close_stability_seconds: Generated<number>;
     auto_close_batch_count: Generated<number>;
     auto_close_cooldown_seconds: Generated<number>;
     single_leg_detect_enabled: Generated<number>;

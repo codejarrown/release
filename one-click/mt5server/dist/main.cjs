@@ -80818,6 +80818,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
       auto_close_expand_protection: payload.autoCloseExpandProtection,
       auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+      auto_close_stability_seconds: payload.autoCloseStabilitySeconds,
       auto_close_batch_count: payload.autoCloseBatchCount,
       auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
       single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
@@ -80879,6 +80880,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
       auto_close_expand_protection: payload.autoCloseExpandProtection,
       auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+      auto_close_stability_seconds: payload.autoCloseStabilitySeconds,
       auto_close_batch_count: payload.autoCloseBatchCount,
       auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
       single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
@@ -81944,6 +81946,11 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       await this.maybeLogAutoTradeDecision(row, snapshot, spreadState, side, "auto.close.skipped", protectionError);
       return false;
     }
+    const stableTriggered = side === "expand" ? isAutoCloseExpandTriggered(row, snapshot, spreadState) : isAutoCloseShrinkTriggered(row, snapshot, spreadState);
+    if (!stableTriggered) {
+      sideState.lastReason = getAutoClosePendingReason(row, snapshot, spreadState, side);
+      return false;
+    }
     sideState.closing = true;
     sideState.status = "closing";
     sideState.lastReason = null;
@@ -82366,6 +82373,7 @@ function normalizeInput(input) {
     autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? false,
     autoCloseExpandProtection: input.autoCloseExpandProtection ?? null,
     autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? null,
+    autoCloseStabilitySeconds: input.autoCloseStabilitySeconds ?? 0,
     autoCloseBatchCount: input.autoCloseBatchCount ?? 1,
     autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? 5,
     singleLegDetectEnabled: input.singleLegDetectEnabled ?? false,
@@ -82412,6 +82420,7 @@ function normalizeUpdateInput(input, existing) {
     autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? existing.auto_close_shrink_enabled === 1,
     autoCloseExpandProtection: input.autoCloseExpandProtection ?? existing.auto_close_expand_protection,
     autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? existing.auto_close_shrink_protection,
+    autoCloseStabilitySeconds: input.autoCloseStabilitySeconds ?? existing.auto_close_stability_seconds ?? 0,
     autoCloseBatchCount: input.autoCloseBatchCount ?? existing.auto_close_batch_count,
     autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? existing.auto_close_cooldown_seconds,
     singleLegDetectEnabled: input.singleLegDetectEnabled ?? existing.single_leg_detect_enabled === 1,
@@ -82474,6 +82483,9 @@ function validateThresholds(input) {
   }
   if (input.autoCloseShrinkProtection !== void 0 && input.autoCloseShrinkProtection !== null && input.autoCloseShrinkProtection < 0) {
     throw new ValidationError("autoCloseShrinkProtection \u4E0D\u80FD\u5C0F\u4E8E 0");
+  }
+  if (!Number.isInteger(input.autoCloseStabilitySeconds) || input.autoCloseStabilitySeconds < 0) {
+    throw new ValidationError("autoCloseStabilitySeconds \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 0 \u7684\u6574\u6570");
   }
   if (!Number.isInteger(input.autoCloseBatchCount) || input.autoCloseBatchCount < 1) {
     throw new ValidationError("autoCloseBatchCount \u5FC5\u987B\u662F\u5927\u4E8E\u7B49\u4E8E 1 \u7684\u6574\u6570");
@@ -82614,6 +82626,7 @@ function toSpreadSubscriptionDto(row, runtimeStarted) {
       autoCloseShrinkEnabled: row.auto_close_shrink_enabled === 1,
       autoCloseExpandProtection: row.auto_close_expand_protection,
       autoCloseShrinkProtection: row.auto_close_shrink_protection,
+      autoCloseStabilitySeconds: row.auto_close_stability_seconds,
       autoCloseBatchCount: row.auto_close_batch_count,
       autoCloseCooldownSeconds: row.auto_close_cooldown_seconds,
       singleLegDetectEnabled: row.single_leg_detect_enabled === 1,
@@ -82691,11 +82704,28 @@ function getAutoOpenPendingReason(row, snapshot, state, side) {
   const stable = getAutoTradeShrinkStableSeconds(state);
   return `\u5F53\u524D\u5DF2\u6EE1\u8DB3\u5F00\u7F29\u9608\u503C\uFF0C\u7A33\u5B9A ${stable} \u79D2 / \u9700 ${row.auto_open_stability_seconds} \u79D2`;
 }
+function getAutoClosePendingReason(row, snapshot, state, side) {
+  const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+  if (side === "expand") {
+    const stable2 = getAutoTradeLongStableSeconds(state);
+    return `\u5F53\u524D\u5DF2\u6EE1\u8DB3\u5E73\u6269\u4FDD\u62A4\u6761\u4EF6\uFF0C\u7A33\u5B9A ${stable2} \u79D2 / \u9700 ${requiredSeconds} \u79D2`;
+  }
+  const stable = getAutoTradeShrinkStableSeconds(state);
+  return `\u5F53\u524D\u5DF2\u6EE1\u8DB3\u5E73\u7F29\u4FDD\u62A4\u6761\u4EF6\uFF0C\u7A33\u5B9A ${stable} \u79D2 / \u9700 ${requiredSeconds} \u79D2`;
+}
 function isAutoOpenExpandTriggered(row, snapshot, state) {
   return row.auto_open_expand_threshold !== null && snapshot.longSpread !== null && snapshot.longSpread <= row.auto_open_expand_threshold && getAutoTradeLongStableSeconds(state) >= row.auto_open_stability_seconds;
 }
 function isAutoOpenShrinkTriggered(row, snapshot, state) {
   return row.auto_open_shrink_threshold !== null && snapshot.shortSpread !== null && snapshot.shortSpread >= row.auto_open_shrink_threshold && getAutoTradeShrinkStableSeconds(state) >= row.auto_open_stability_seconds;
+}
+function isAutoCloseExpandTriggered(row, snapshot, state) {
+  const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+  return row.auto_close_expand_protection !== null && snapshot.longSpread !== null && getAutoTradeLongStableSeconds(state) >= requiredSeconds;
+}
+function isAutoCloseShrinkTriggered(row, snapshot, state) {
+  const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+  return row.auto_close_shrink_protection !== null && snapshot.shortSpread !== null && getAutoTradeShrinkStableSeconds(state) >= requiredSeconds;
 }
 function getAutoCloseProtectionError(row, snapshot, side) {
   const spreadAdj = (snapshot.longSpread ?? 0) - (snapshot.shortSpread ?? 0);
@@ -87105,6 +87135,7 @@ var spreadSubscriptionBody = external_exports.object({
   autoCloseShrinkEnabled: external_exports.boolean().optional(),
   autoCloseExpandProtection: external_exports.number().min(0).nullable().optional(),
   autoCloseShrinkProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseStabilitySeconds: external_exports.number().int().min(0).optional(),
   autoCloseBatchCount: external_exports.number().int().min(1).optional(),
   autoCloseCooldownSeconds: external_exports.number().int().min(0).optional(),
   singleLegDetectEnabled: external_exports.boolean().optional(),
@@ -87144,6 +87175,7 @@ var updateSpreadSubscriptionBody = external_exports.object({
   autoCloseShrinkEnabled: external_exports.boolean().optional(),
   autoCloseExpandProtection: external_exports.number().min(0).nullable().optional(),
   autoCloseShrinkProtection: external_exports.number().min(0).nullable().optional(),
+  autoCloseStabilitySeconds: external_exports.number().int().min(0).optional(),
   autoCloseBatchCount: external_exports.number().int().min(1).optional(),
   autoCloseCooldownSeconds: external_exports.number().int().min(0).optional(),
   singleLegDetectEnabled: external_exports.boolean().optional(),
@@ -87221,6 +87253,7 @@ var spreadSubscriptionDto = {
         autoCloseShrinkEnabled: { type: "boolean" },
         autoCloseExpandProtection: { type: "number", nullable: true },
         autoCloseShrinkProtection: { type: "number", nullable: true },
+        autoCloseStabilitySeconds: { type: "integer" },
         autoCloseBatchCount: { type: "integer" },
         autoCloseCooldownSeconds: { type: "integer" },
         singleLegDetectEnabled: { type: "boolean" },

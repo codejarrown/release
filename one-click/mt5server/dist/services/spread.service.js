@@ -76,6 +76,7 @@ export class SpreadService extends EventEmitter {
             auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
             auto_close_expand_protection: payload.autoCloseExpandProtection,
             auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+            auto_close_stability_seconds: payload.autoCloseStabilitySeconds,
             auto_close_batch_count: payload.autoCloseBatchCount,
             auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
             single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
@@ -137,6 +138,7 @@ export class SpreadService extends EventEmitter {
             auto_close_shrink_enabled: payload.autoCloseShrinkEnabled ? 1 : 0,
             auto_close_expand_protection: payload.autoCloseExpandProtection,
             auto_close_shrink_protection: payload.autoCloseShrinkProtection,
+            auto_close_stability_seconds: payload.autoCloseStabilitySeconds,
             auto_close_batch_count: payload.autoCloseBatchCount,
             auto_close_cooldown_seconds: payload.autoCloseCooldownSeconds,
             single_leg_detect_enabled: payload.singleLegDetectEnabled ? 1 : 0,
@@ -1248,6 +1250,13 @@ export class SpreadService extends EventEmitter {
             await this.maybeLogAutoTradeDecision(row, snapshot, spreadState, side, 'auto.close.skipped', protectionError);
             return false;
         }
+        const stableTriggered = side === 'expand'
+            ? isAutoCloseExpandTriggered(row, snapshot, spreadState)
+            : isAutoCloseShrinkTriggered(row, snapshot, spreadState);
+        if (!stableTriggered) {
+            sideState.lastReason = getAutoClosePendingReason(row, snapshot, spreadState, side);
+            return false;
+        }
         sideState.closing = true;
         sideState.status = 'closing';
         sideState.lastReason = null;
@@ -1716,6 +1725,7 @@ function normalizeInput(input) {
         autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? false,
         autoCloseExpandProtection: input.autoCloseExpandProtection ?? null,
         autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? null,
+        autoCloseStabilitySeconds: input.autoCloseStabilitySeconds ?? 0,
         autoCloseBatchCount: input.autoCloseBatchCount ?? 1,
         autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? 5,
         singleLegDetectEnabled: input.singleLegDetectEnabled ?? false,
@@ -1764,6 +1774,7 @@ function normalizeUpdateInput(input, existing) {
         autoCloseShrinkEnabled: input.autoCloseShrinkEnabled ?? existing.auto_close_shrink_enabled === 1,
         autoCloseExpandProtection: input.autoCloseExpandProtection ?? existing.auto_close_expand_protection,
         autoCloseShrinkProtection: input.autoCloseShrinkProtection ?? existing.auto_close_shrink_protection,
+        autoCloseStabilitySeconds: input.autoCloseStabilitySeconds ?? existing.auto_close_stability_seconds ?? 0,
         autoCloseBatchCount: input.autoCloseBatchCount ?? existing.auto_close_batch_count,
         autoCloseCooldownSeconds: input.autoCloseCooldownSeconds ?? existing.auto_close_cooldown_seconds,
         singleLegDetectEnabled: input.singleLegDetectEnabled ?? existing.single_leg_detect_enabled === 1,
@@ -1826,6 +1837,9 @@ function validateThresholds(input) {
     }
     if (input.autoCloseShrinkProtection !== undefined && input.autoCloseShrinkProtection !== null && input.autoCloseShrinkProtection < 0) {
         throw new ValidationError('autoCloseShrinkProtection 不能小于 0');
+    }
+    if (!Number.isInteger(input.autoCloseStabilitySeconds) || input.autoCloseStabilitySeconds < 0) {
+        throw new ValidationError('autoCloseStabilitySeconds 必须是大于等于 0 的整数');
     }
     if (!Number.isInteger(input.autoCloseBatchCount) || input.autoCloseBatchCount < 1) {
         throw new ValidationError('autoCloseBatchCount 必须是大于等于 1 的整数');
@@ -1977,6 +1991,7 @@ function toSpreadSubscriptionDto(row, runtimeStarted) {
             autoCloseShrinkEnabled: row.auto_close_shrink_enabled === 1,
             autoCloseExpandProtection: row.auto_close_expand_protection,
             autoCloseShrinkProtection: row.auto_close_shrink_protection,
+            autoCloseStabilitySeconds: row.auto_close_stability_seconds,
             autoCloseBatchCount: row.auto_close_batch_count,
             autoCloseCooldownSeconds: row.auto_close_cooldown_seconds,
             singleLegDetectEnabled: row.single_leg_detect_enabled === 1,
@@ -2064,6 +2079,15 @@ function getAutoOpenPendingReason(row, snapshot, state, side) {
     const stable = getAutoTradeShrinkStableSeconds(state);
     return `当前已满足开缩阈值，稳定 ${stable} 秒 / 需 ${row.auto_open_stability_seconds} 秒`;
 }
+function getAutoClosePendingReason(row, snapshot, state, side) {
+    const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+    if (side === 'expand') {
+        const stable = getAutoTradeLongStableSeconds(state);
+        return `当前已满足平扩保护条件，稳定 ${stable} 秒 / 需 ${requiredSeconds} 秒`;
+    }
+    const stable = getAutoTradeShrinkStableSeconds(state);
+    return `当前已满足平缩保护条件，稳定 ${stable} 秒 / 需 ${requiredSeconds} 秒`;
+}
 function isAutoOpenExpandTriggered(row, snapshot, state) {
     return row.auto_open_expand_threshold !== null
         && snapshot.longSpread !== null
@@ -2075,6 +2099,18 @@ function isAutoOpenShrinkTriggered(row, snapshot, state) {
         && snapshot.shortSpread !== null
         && snapshot.shortSpread >= row.auto_open_shrink_threshold
         && getAutoTradeShrinkStableSeconds(state) >= row.auto_open_stability_seconds;
+}
+function isAutoCloseExpandTriggered(row, snapshot, state) {
+    const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+    return row.auto_close_expand_protection !== null
+        && snapshot.longSpread !== null
+        && getAutoTradeLongStableSeconds(state) >= requiredSeconds;
+}
+function isAutoCloseShrinkTriggered(row, snapshot, state) {
+    const requiredSeconds = row.auto_close_stability_seconds ?? 0;
+    return row.auto_close_shrink_protection !== null
+        && snapshot.shortSpread !== null
+        && getAutoTradeShrinkStableSeconds(state) >= requiredSeconds;
 }
 function getAutoCloseProtectionError(row, snapshot, side) {
     const spreadAdj = (snapshot.longSpread ?? 0) - (snapshot.shortSpread ?? 0);
