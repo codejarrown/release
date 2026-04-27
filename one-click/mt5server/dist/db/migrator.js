@@ -13,6 +13,7 @@ import * as m011 from './migrations/011_account_reconnect_fields.js';
 import * as m012 from './migrations/012_order_group_spreads.js';
 import * as m013 from './migrations/013_auto_trade.js';
 import * as m014 from './migrations/014_auto_trade_single_leg.js';
+import * as m015 from './migrations/015_auto_close_stability.js';
 const migrations = {
     '001_initial': m001,
     '002_accounts_redesign': m002,
@@ -28,6 +29,7 @@ const migrations = {
     '012_order_group_spreads': m012,
     '013_auto_trade': m013,
     '014_auto_trade_single_leg': m014,
+    '015_auto_close_stability': m015,
 };
 class StaticMigrationProvider {
     async getMigrations() {

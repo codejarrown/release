@@ -15408,16 +15408,16 @@ var require_validate = __commonJS({
         const matches = RELATIVE_JSON_POINTER.exec($data);
         if (!matches)
           throw new Error(`Invalid JSON-pointer: ${$data}`);
-        const up15 = +matches[1];
+        const up16 = +matches[1];
         jsonPointer = matches[2];
         if (jsonPointer === "#") {
-          if (up15 >= dataLevel)
-            throw new Error(errorMsg("property/index", up15));
-          return dataPathArr[dataLevel - up15];
+          if (up16 >= dataLevel)
+            throw new Error(errorMsg("property/index", up16));
+          return dataPathArr[dataLevel - up16];
         }
-        if (up15 > dataLevel)
-          throw new Error(errorMsg("data", up15));
-        data = dataNames[dataLevel - up15];
+        if (up16 > dataLevel)
+          throw new Error(errorMsg("data", up16));
+        data = dataNames[dataLevel - up16];
         if (!jsonPointer)
           return data;
       }
@@ -15430,8 +15430,8 @@ var require_validate = __commonJS({
         }
       }
       return expr;
-      function errorMsg(pointerType, up15) {
-        return `Cannot access ${pointerType} ${up15} levels up, current level is ${dataLevel}`;
+      function errorMsg(pointerType, up16) {
+        return `Cannot access ${pointerType} ${up16} levels up, current level is ${dataLevel}`;
       }
     }
     exports2.getData = getData;
@@ -78641,6 +78641,26 @@ async function up14(db) {
 async function down14(_db) {
 }
 
+// src/db/migrations/015_auto_close_stability.ts
+var auto_close_stability_exports = {};
+__export(auto_close_stability_exports, {
+  down: () => down15,
+  up: () => up15
+});
+async function addColumnIfMissing3(db, columnNames, name, add) {
+  if (columnNames.has(name)) return;
+  await add();
+}
+async function up15(db) {
+  const columns = await sql`PRAGMA table_info(spread_subscriptions)`.execute(db);
+  const columnNames = new Set(columns.rows.map((row) => row.name));
+  await addColumnIfMissing3(db, columnNames, "auto_close_stability_seconds", async () => {
+    await db.schema.alterTable("spread_subscriptions").addColumn("auto_close_stability_seconds", "integer", (col) => col.notNull().defaultTo(0)).execute();
+  });
+}
+async function down15(_db) {
+}
+
 // src/db/migrator.ts
 var migrations = {
   "001_initial": initial_exports,
@@ -78656,7 +78676,8 @@ var migrations = {
   "011_account_reconnect_fields": account_reconnect_fields_exports,
   "012_order_group_spreads": order_group_spreads_exports,
   "013_auto_trade": auto_trade_exports,
-  "014_auto_trade_single_leg": auto_trade_single_leg_exports
+  "014_auto_trade_single_leg": auto_trade_single_leg_exports,
+  "015_auto_close_stability": auto_close_stability_exports
 };
 var StaticMigrationProvider = class {
   async getMigrations() {
