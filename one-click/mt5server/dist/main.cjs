@@ -80529,10 +80529,21 @@ var WebhookSender = class {
 
 // src/services/push/ntfy.ts
 var DEFAULT_SERVER_URL = "https://ntfy.sh";
+var NTFY_DAILY_QUOTA_ERROR_CODE = 42908;
 var PRIORITY_NAME = {
   info: "default",
   warn: "high",
   error: "urgent"
+};
+var NtfyQuotaExceededError = class extends Error {
+  statusCode;
+  errorCode;
+  constructor(message, statusCode, errorCode) {
+    super(message);
+    this.name = "NtfyQuotaExceededError";
+    this.statusCode = statusCode;
+    this.errorCode = errorCode;
+  }
 };
 var NtfySender = class {
   platform = "ntfy";
@@ -80543,8 +80554,8 @@ var NtfySender = class {
     }
     const serverUrl = normalizeBaseUrl(config2.serverUrl) ?? DEFAULT_SERVER_URL;
     const token = normalizeString(config2.token);
-    const tags = normalizeTags(message.level);
-    const priorityName = PRIORITY_NAME[message.level ?? "info"] ?? PRIORITY_NAME.info;
+    const tags = normalizeTags(message);
+    const priorityName = resolvePriorityName(message);
     const headers = {
       "Content-Type": "text/plain; charset=utf-8",
       Priority: priorityName,
@@ -80563,7 +80574,17 @@ async function sendOnce(serverUrl, topic, headers, body) {
     body
   });
   if (!res.ok) {
-    throw new Error(`ntfy error (${res.status}): ${await res.text()}`);
+    const responseText = await res.text();
+    const parsed = tryParseJson(responseText);
+    const errorCode = parsed && typeof parsed === "object" && typeof parsed.code === "number" ? parsed.code : null;
+    if (res.status === 429 && errorCode === NTFY_DAILY_QUOTA_ERROR_CODE) {
+      throw new NtfyQuotaExceededError(
+        `ntfy daily quota reached (${res.status}): ${responseText}`,
+        res.status,
+        errorCode
+      );
+    }
+    throw new Error(`ntfy error (${res.status}): ${responseText}`);
   }
 }
 function buildBody(message) {
@@ -80581,7 +80602,15 @@ function normalizeBaseUrl(value) {
 function normalizeString(value) {
   return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
 }
-function normalizeTags(level) {
+function resolvePriorityName(message) {
+  if (isSpreadSubscriptionAlert(message)) return "urgent";
+  return PRIORITY_NAME[message.level ?? "info"] ?? PRIORITY_NAME.info;
+}
+function normalizeTags(message) {
+  if (isSpreadSubscriptionAlert(message)) {
+    return "rotating_light,chart_with_upwards_trend";
+  }
+  const level = message.level;
   switch (level) {
     case "error":
       return "rotating_light,warning";
@@ -80591,8 +80620,19 @@ function normalizeTags(level) {
       return "information_source";
   }
 }
+function isSpreadSubscriptionAlert(message) {
+  return message.metadata?.kind === "spread-stable-threshold";
+}
+function tryParseJson(value) {
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
 
 // src/services/push/index.ts
+var NTFY_QUOTA_MUTE_MS = 60 * 60 * 1e3;
 var PushService = class {
   constructor(repo, encryptionKey) {
     this.repo = repo;
@@ -80605,6 +80645,8 @@ var PushService = class {
   repo;
   encryptionKey;
   senders = /* @__PURE__ */ new Map();
+  mutedChannelUntil = /* @__PURE__ */ new Map();
+  muteNoticeSentAt = /* @__PURE__ */ new Map();
   registerSender(sender) {
     this.senders.set(sender.platform, sender);
   }
@@ -80667,6 +80709,7 @@ var PushService = class {
     );
     for (const [i, result] of results.entries()) {
       if (result.status === "rejected") {
+        if (this.shouldSuppressChannelErrorLog(channels[i], result.reason)) continue;
         console.error(`Push to channel #${channels[i].id} (${channels[i].platform}) failed:`, result.reason);
       }
     }
@@ -80690,6 +80733,10 @@ var PushService = class {
     const failedChannelIds = [];
     for (const [i, result] of results.entries()) {
       if (result.status === "rejected") {
+        if (this.shouldSuppressChannelErrorLog(enabledChannels[i], result.reason)) {
+          failedChannelIds.push(enabledChannels[i].id);
+          continue;
+        }
         failedChannelIds.push(enabledChannels[i].id);
         console.error(`Push to channel #${enabledChannels[i].id} (${enabledChannels[i].platform}) failed:`, result.reason);
       } else {
@@ -80704,13 +80751,50 @@ var PushService = class {
     };
   }
   async sendToChannel(channel, message) {
+    this.assertChannelAvailable(channel);
     const sender = this.senders.get(channel.platform);
     if (!sender) {
       throw new Error(`No sender registered for platform: ${channel.platform}`);
     }
     const configJson = decrypt(channel.config_encrypted, this.encryptionKey);
     const config2 = JSON.parse(configJson);
-    await sender.send(message, config2);
+    try {
+      await sender.send(message, config2);
+    } catch (error) {
+      this.handleChannelSendError(channel, error);
+      throw error;
+    }
+  }
+  assertChannelAvailable(channel) {
+    const mutedUntil = this.mutedChannelUntil.get(channel.id) ?? 0;
+    if (mutedUntil <= Date.now()) return;
+    throw new Error(
+      `push channel muted until ${new Date(mutedUntil).toISOString()} due to previous quota limit`
+    );
+  }
+  handleChannelSendError(channel, error) {
+    if (channel.platform !== "ntfy") return;
+    if (!(error instanceof NtfyQuotaExceededError)) return;
+    this.mutedChannelUntil.set(channel.id, Date.now() + NTFY_QUOTA_MUTE_MS);
+  }
+  shouldSuppressChannelErrorLog(channel, error) {
+    if (channel.platform !== "ntfy") return false;
+    if (error instanceof NtfyQuotaExceededError) {
+      return this.markMuteNotice(channel.id);
+    }
+    if (error instanceof Error && error.message.includes("push channel muted until")) {
+      return this.markMuteNotice(channel.id);
+    }
+    return false;
+  }
+  markMuteNotice(channelId) {
+    const now = Date.now();
+    const lastNoticeAt = this.muteNoticeSentAt.get(channelId) ?? 0;
+    if (now - lastNoticeAt < NTFY_QUOTA_MUTE_MS) {
+      return true;
+    }
+    this.muteNoticeSentAt.set(channelId, now);
+    return false;
   }
 };
 function toDto3(row) {
