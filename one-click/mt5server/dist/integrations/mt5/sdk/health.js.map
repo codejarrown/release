@@ -1,0 +1,1 @@
+{"version":3,"file":"health.js","sourceRoot":"","sources":["../../../../src/integrations/mt5/sdk/health.ts"],"names":[],"mappings":"AAOA,MAAM,OAAO,SAAS;IACS;IAA7B,YAA6B,MAAkB;QAAlB,WAAM,GAAN,MAAM,CAAY;IAAG,CAAC;IAEnD,KAAK,CAAC,KAAK;QACT,MAAM,GAAG,GAAG,MAAM,IAAI,CAAC,MAAM,CAAC,GAAG,CAAsB,SAAS,CAAC,CAAC;QAClE,OAAO,GAAG,CAAC,IAAI,CAAC;IAClB,CAAC;CACF"}

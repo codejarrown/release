@@ -1,0 +1,1 @@
+{"version":3,"file":"014_auto_trade_single_leg.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/014_auto_trade_single_leg.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAgB1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAiD3D;AAED,wBAAsB,IAAI,CAAC,GAAG,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAE9D"}

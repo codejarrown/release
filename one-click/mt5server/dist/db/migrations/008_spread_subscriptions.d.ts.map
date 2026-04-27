@@ -1,0 +1,1 @@
+{"version":3,"file":"008_spread_subscriptions.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/008_spread_subscriptions.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAE1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAkB3D;AAED,wBAAsB,IAAI,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAE7D"}

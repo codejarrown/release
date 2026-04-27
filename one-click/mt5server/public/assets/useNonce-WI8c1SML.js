@@ -1,0 +1,1 @@
+import{p as e,rt as t}from"./vue.runtime.esm-bundler-8rs0Hguq.js";import{f as n}from"./Teleport-BA_A1ODe.js";function r(e,t=-1/0,n=1/0){return Math.min(n,Math.max(t,e))}function i(r){let i=n({dir:t(`ltr`)});return e(()=>r?.value||i.dir?.value||`ltr`)}function a(r){let i=n({nonce:t()});return e(()=>r?.value||i.nonce?.value)}export{i as n,r,a as t};

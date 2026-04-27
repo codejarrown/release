@@ -1,0 +1,1 @@
+{"version":3,"file":"010_spread_subscription_lots.d.ts","sourceRoot":"","sources":["../../../src/db/migrations/010_spread_subscription_lots.ts"],"names":[],"mappings":"AAAA,OAAO,EAAO,KAAK,MAAM,EAAE,MAAM,QAAQ,CAAC;AAM1C,wBAAsB,EAAE,CAAC,EAAE,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAsB3D;AAED,wBAAsB,IAAI,CAAC,GAAG,EAAE,MAAM,CAAC,OAAO,CAAC,GAAG,OAAO,CAAC,IAAI,CAAC,CAE9D"}
