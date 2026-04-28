@@ -81391,7 +81391,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       title: `${runtime.row.name} \xB7 ${directionInfo.label}`,
       body: [
         `${runtime.group.name} \xB7 ${directionInfo.spreadField}`,
-        `\u5F53\u524D ${spreadValue}\uFF0C\u9608\u503C ${directionInfo.operatorLabel} ${threshold}`,
+        `\u5F53\u524D ${directionInfo.spreadField}=${spreadValue}\uFF0C\u9608\u503C ${directionInfo.operatorLabel} ${threshold}`,
         `\u7A33\u5B9A ${stableSeconds}s`,
         `A ${runtime.row.symbol_a} / B ${runtime.row.symbol_b}`
       ].join("\n\n"),
