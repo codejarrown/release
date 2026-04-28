@@ -79038,6 +79038,13 @@ var SpreadSubscriptionRepository = class {
   async findEnabled() {
     return this.db.selectFrom("spread_subscriptions").selectAll().where("is_enabled", "=", 1).orderBy("id", "asc").execute();
   }
+  async disableAllAutoTradeEnabled() {
+    const result = await this.db.updateTable("spread_subscriptions").set({
+      auto_trade_enabled: 0,
+      updated_at: (/* @__PURE__ */ new Date()).toISOString()
+    }).where("auto_trade_enabled", "=", 1).executeTakeFirst();
+    return Number(result.numUpdatedRows ?? 0);
+  }
   async create(data) {
     return this.db.insertInto("spread_subscriptions").values(data).returningAll().executeTakeFirstOrThrow();
   }
@@ -80880,6 +80887,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   lastAutoTradeDecisionAt = /* @__PURE__ */ new Map();
   heartbeatTimer = null;
   async initialize() {
+    await this.repo.disableAllAutoTradeEnabled();
     const rows = await this.repo.findEnabled();
     for (const row of rows) {
       await this.syncRuntime(row);
@@ -81104,7 +81112,15 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     if (!row) throw new NotFoundError("SpreadSubscription", subscriptionId);
     return this.buildAutoTradeRuntimeDto(row);
   }
-  async listAutoTradeRuntime(accountGroupId) {
+  async listAutoTradeRuntime(accountGroupId, subscriptionId) {
+    if (subscriptionId !== void 0) {
+      const row = await this.repo.findById(subscriptionId);
+      if (!row) return [];
+      if (accountGroupId !== void 0 && row.account_group_id !== accountGroupId) {
+        return [];
+      }
+      return [await this.buildAutoTradeRuntimeDto(row)];
+    }
     const rows = accountGroupId !== void 0 ? await this.repo.findAllByAccountGroupId(accountGroupId) : await this.repo.findEnabled();
     return Promise.all(rows.map((row) => this.buildAutoTradeRuntimeDto(row)));
   }
@@ -81289,13 +81305,15 @@ var SpreadService = class extends import_node_events4.EventEmitter {
         snapshot
       });
       await this.maybeNotify(runtime, snapshot);
-      void this.maybeRunAutoTrade(runtime, snapshot).catch((error) => {
-        console.error("[AutoTrade] evaluation failed", {
-          subscriptionId,
-          accountGroupId: runtime.group.id,
-          error: error instanceof Error ? error.message : String(error)
+      if (AUTO_TRADE_EXECUTION_ENABLED && runtime.row.auto_trade_enabled === 1) {
+        void this.maybeRunAutoTrade(runtime, snapshot).catch((error) => {
+          console.error("[AutoTrade] evaluation failed", {
+            subscriptionId,
+            accountGroupId: runtime.group.id,
+            error: error instanceof Error ? error.message : String(error)
+          });
         });
-      });
+      }
     }
   }
   close() {
@@ -81628,6 +81646,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   async buildAutoTradeRuntimeDto(row) {
     const runtime = this.getAutoTradeRuntimeState(row);
     const group = await this.getLatestRuntimeGroup(row);
+    const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
     if (!AUTO_TRADE_EXECUTION_ENABLED) {
       applyAutoTradeFeatureDisabledReason(runtime);
     }
@@ -81638,7 +81657,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       applyAutoTradePauseReason(runtime, runtime.pauseReason);
     } else if (row.auto_trade_enabled === 1 && AUTO_TRADE_EXECUTION_ENABLED) {
       const singleLegSnapshot = this.getSnapshotFromRow(row, group);
-      const singleLegCandidate = row.single_leg_detect_enabled === 1 ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot) : null;
+      const singleLegCandidate = row.single_leg_detect_enabled === 1 ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot, openGroups) : null;
       if (singleLegCandidate) {
         runtime.locked = true;
         const singleLegRuntime = this.getSingleLegRuntimeState(singleLegCandidate.group.id);
@@ -81660,10 +81679,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     } else if (!runtime.expand.opening && !runtime.expand.closing && !runtime.shrink.opening && !runtime.shrink.closing) {
       runtime.locked = false;
     }
-    const [expandGroups, shrinkGroups] = await Promise.all([
-      this.findOpenGroupsForSubscription(row.id, "expand"),
-      this.findOpenGroupsForSubscription(row.id, "shrink")
-    ]);
+    const expandGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, "expand");
+    const shrinkGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, "shrink");
     return {
       subscriptionId: row.id,
       accountGroupId: row.account_group_id,
@@ -81676,9 +81693,6 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   async maybeRunAutoTrade(runtime, snapshot) {
     const row = runtime.row;
     const state = this.getAutoTradeRuntimeState(row);
-    const group = await this.getLatestRuntimeGroup(row, runtime);
-    const effectiveSnapshot = this.getSnapshotFromRow(row, group);
-    const spreadState = this.getRuntimeState(row.id);
     state.enabled = row.auto_trade_enabled === 1;
     state.accountGroupId = row.account_group_id;
     if (!AUTO_TRADE_EXECUTION_ENABLED) {
@@ -81689,6 +81703,10 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       state.locked = false;
       return;
     }
+    const group = await this.getLatestRuntimeGroup(row, runtime);
+    const effectiveSnapshot = this.getSnapshotFromRow(row, group);
+    const spreadState = this.getRuntimeState(row.id);
+    const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
     const availabilityReason = getAutoTradeAvailabilityReason(row, group, effectiveSnapshot.status);
     if (availabilityReason) {
       applyAutoTradeAvailabilityReason(state, availabilityReason);
@@ -81703,15 +81721,15 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       return;
     }
     state.locked = false;
-    if (await this.handleSingleLegRisk(row, effectiveSnapshot, state)) return;
-    if (await this.tryAutoClose(row, effectiveSnapshot, state, "expand")) return;
-    if (await this.tryAutoClose(row, effectiveSnapshot, state, "shrink")) return;
-    if (await this.tryAutoOpen(row, effectiveSnapshot, state, "expand")) return;
-    if (await this.tryAutoOpen(row, effectiveSnapshot, state, "shrink")) return;
+    if (await this.handleSingleLegRisk(row, effectiveSnapshot, state, openGroups)) return;
+    if (await this.tryAutoClose(row, effectiveSnapshot, state, openGroups, "expand")) return;
+    if (await this.tryAutoClose(row, effectiveSnapshot, state, openGroups, "shrink")) return;
+    if (await this.tryAutoOpen(row, effectiveSnapshot, state, openGroups, "expand")) return;
+    if (await this.tryAutoOpen(row, effectiveSnapshot, state, openGroups, "shrink")) return;
   }
-  async handleSingleLegRisk(row, snapshot, state) {
+  async handleSingleLegRisk(row, snapshot, state, openGroups) {
     if (row.single_leg_detect_enabled !== 1) return false;
-    const candidate = await this.findSingleLegCandidateForSubscription(row.id, snapshot);
+    const candidate = await this.findSingleLegCandidateForSubscription(row.id, snapshot, openGroups);
     if (!candidate) return false;
     const sideState = candidate.side === "expand" ? state.expand : state.shrink;
     const runtime = this.getSingleLegRuntimeState(candidate.group.id);
@@ -81896,7 +81914,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     if (existing) return existing.group;
     throw new NotFoundError("AccountGroup", row.account_group_id);
   }
-  async tryAutoOpen(row, snapshot, state, side) {
+  async tryAutoOpen(row, snapshot, state, openGroups, side) {
     const sideState = side === "expand" ? state.expand : state.shrink;
     const spreadState = this.getRuntimeState(row.id);
     const enabled = side === "expand" ? row.auto_open_expand_enabled === 1 : row.auto_open_shrink_enabled === 1;
@@ -81918,7 +81936,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       sideState.lastReason = `\u5F00\u4ED3\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getCooldownRemainingSeconds(sideState)} \u79D2`;
       return false;
     }
-    const currentGroups = await this.findOpenGroupsForSubscription(row.id, side);
+    const currentGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, side);
     if (currentGroups.length >= targetGroups) {
       sideState.lastReason = `\u5DF2\u8FBE\u5230\u76EE\u6807\u5F00\u4ED3\u7EC4\u6570\uFF08${currentGroups.length}/${targetGroups}\uFF09`;
       return false;
@@ -82023,7 +82041,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       return false;
     }
   }
-  async tryAutoClose(row, snapshot, state, side) {
+  async tryAutoClose(row, snapshot, state, openGroups, side) {
     const sideState = side === "expand" ? state.expand : state.shrink;
     const spreadState = this.getRuntimeState(row.id);
     const enabled = row.auto_close_enabled === 1 && (side === "expand" ? row.auto_close_expand_enabled === 1 : row.auto_close_shrink_enabled === 1);
@@ -82040,7 +82058,7 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       sideState.lastReason = `\u5E73\u4ED3\u51B7\u5374\u4E2D\uFF0C\u5269\u4F59 ${getCooldownRemainingSeconds(sideState)} \u79D2`;
       return false;
     }
-    const groups = await this.findOpenGroupsForSubscription(row.id, side);
+    const groups = this.filterOpenGroupsForSubscription(openGroups, row.id, side);
     if (groups.length === 0) {
       sideState.lastReason = "\u5F53\u524D\u65E0\u53EF\u81EA\u52A8\u5E73\u4ED3\u8BA2\u5355\u7EC4";
       return false;
@@ -82160,19 +82178,12 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState)
     });
   }
-  async findOpenGroupsForSubscription(subscriptionId, side) {
-    const groups = await this.orderGroupService.listOpenRuntimeGroups();
-    return groups.filter((group) => {
-      if (group.isFullyClosed) return false;
-      if ((group.items ?? []).some((item) => item.status === "closing")) return false;
-      const metadata = parseSpreadRemark2(group.remark);
-      if (metadata.subscriptionId !== subscriptionId) return false;
-      if (side === "expand") return metadata.direction === "sellB_buyA";
-      return metadata.direction === "sellA_buyB";
-    });
+  async findOpenGroupsForSubscription(subscriptionId, side, openGroups) {
+    const groups = openGroups ?? await this.orderGroupService.listOpenRuntimeGroups();
+    return this.filterOpenGroupsForSubscription(groups, subscriptionId, side);
   }
-  async findSingleLegCandidateForSubscription(subscriptionId, snapshot) {
-    const groups = await this.orderGroupService.listOpenRuntimeGroups();
+  async findSingleLegCandidateForSubscription(subscriptionId, snapshot, openGroups) {
+    const groups = openGroups ?? await this.orderGroupService.listOpenRuntimeGroups();
     const candidates = groups.flatMap((group) => {
       const metadata = parseSpreadRemark2(group.remark);
       if (metadata.subscriptionId !== subscriptionId || !metadata.direction) return [];
@@ -82191,6 +82202,16 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       }];
     }).sort((a, b) => b.referenceTime - a.referenceTime || b.group.id - a.group.id);
     return candidates[0] ?? null;
+  }
+  filterOpenGroupsForSubscription(groups, subscriptionId, side) {
+    return groups.filter((group) => {
+      if (group.isFullyClosed) return false;
+      if ((group.items ?? []).some((item) => item.status === "closing")) return false;
+      const metadata = parseSpreadRemark2(group.remark);
+      if (metadata.subscriptionId !== subscriptionId) return false;
+      if (side === "expand") return metadata.direction === "sellB_buyA";
+      return metadata.direction === "sellA_buyB";
+    });
   }
   getSingleLegRuntimeState(groupId) {
     const existing = this.singleLegRuntimeByGroupId.get(groupId);
@@ -87726,7 +87747,8 @@ function registerSpreadRoutes(app, spreadService) {
       querystring: {
         type: "object",
         properties: {
-          accountGroupId: { type: "integer", minimum: 1 }
+          accountGroupId: { type: "integer", minimum: 1 },
+          subscriptionId: { type: "integer", minimum: 1 }
         }
       },
       response: {
@@ -87735,8 +87757,10 @@ function registerSpreadRoutes(app, spreadService) {
     }
   }, async (request) => {
     const accountGroupIdRaw = request.query.accountGroupId;
+    const subscriptionIdRaw = request.query.subscriptionId;
     const accountGroupId = accountGroupIdRaw === void 0 ? void 0 : parseId7(String(accountGroupIdRaw), "accountGroupId");
-    return { data: await spreadService.listAutoTradeRuntime(accountGroupId) };
+    const subscriptionId = subscriptionIdRaw === void 0 ? void 0 : parseId7(String(subscriptionIdRaw), "subscriptionId");
+    return { data: await spreadService.listAutoTradeRuntime(accountGroupId, subscriptionId) };
   });
   app.get("/api/v1/account-groups/:accountGroupId/spread-panel", {
     schema: {
