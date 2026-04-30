@@ -50,7 +50,7 @@ export interface SyncJobTable {
 export type SyncJob = Selectable<SyncJobTable>;
 export type NewSyncJob = Insertable<SyncJobTable>;
 export type SyncJobUpdate = Updateable<SyncJobTable>;
-export type PushPlatform = 'telegram' | 'dingtalk' | 'feishu' | 'webhook' | 'ntfy';
+export type PushPlatform = 'telegram' | 'dingtalk' | 'feishu' | 'webhook' | 'ntfy' | 'bark';
 export interface PushChannelTable {
     id: Generated<number>;
     name: string;

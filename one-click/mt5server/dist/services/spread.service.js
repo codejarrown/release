@@ -33,6 +33,7 @@ export class SpreadService extends EventEmitter {
         this.orderGroupService = orderGroupService;
     }
     async initialize() {
+        await this.repo.disableAllAutoTradeEnabled();
         const rows = await this.repo.findEnabled();
         for (const row of rows) {
             await this.syncRuntime(row);
@@ -260,7 +261,16 @@ export class SpreadService extends EventEmitter {
             throw new NotFoundError('SpreadSubscription', subscriptionId);
         return this.buildAutoTradeRuntimeDto(row);
     }
-    async listAutoTradeRuntime(accountGroupId) {
+    async listAutoTradeRuntime(accountGroupId, subscriptionId) {
+        if (subscriptionId !== undefined) {
+            const row = await this.repo.findById(subscriptionId);
+            if (!row)
+                return [];
+            if (accountGroupId !== undefined && row.account_group_id !== accountGroupId) {
+                return [];
+            }
+            return [await this.buildAutoTradeRuntimeDto(row)];
+        }
         const rows = accountGroupId !== undefined
             ? await this.repo.findAllByAccountGroupId(accountGroupId)
             : await this.repo.findEnabled();
@@ -446,13 +456,15 @@ export class SpreadService extends EventEmitter {
                 snapshot,
             });
             await this.maybeNotify(runtime, snapshot);
-            void this.maybeRunAutoTrade(runtime, snapshot).catch((error) => {
-                console.error('[AutoTrade] evaluation failed', {
-                    subscriptionId,
-                    accountGroupId: runtime.group.id,
-                    error: error instanceof Error ? error.message : String(error),
+            if (AUTO_TRADE_EXECUTION_ENABLED && runtime.row.auto_trade_enabled === 1) {
+                void this.maybeRunAutoTrade(runtime, snapshot).catch((error) => {
+                    console.error('[AutoTrade] evaluation failed', {
+                        subscriptionId,
+                        accountGroupId: runtime.group.id,
+                        error: error instanceof Error ? error.message : String(error),
+                    });
                 });
-            });
+            }
         }
     }
     close() {
@@ -565,7 +577,7 @@ export class SpreadService extends EventEmitter {
             title: `${runtime.row.name} · ${directionInfo.label}`,
             body: [
                 `${runtime.group.name} · ${directionInfo.spreadField}`,
-                `当前 ${spreadValue}，阈值 ${directionInfo.operatorLabel} ${threshold}`,
+                `当前 ${directionInfo.spreadField}=${spreadValue}，阈值 ${directionInfo.operatorLabel} ${threshold}`,
                 `稳定 ${stableSeconds}s`,
                 `A ${runtime.row.symbol_a} / B ${runtime.row.symbol_b}`,
             ].join('\n\n'),
@@ -828,6 +840,7 @@ export class SpreadService extends EventEmitter {
     async buildAutoTradeRuntimeDto(row) {
         const runtime = this.getAutoTradeRuntimeState(row);
         const group = await this.getLatestRuntimeGroup(row);
+        const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
         if (!AUTO_TRADE_EXECUTION_ENABLED) {
             applyAutoTradeFeatureDisabledReason(runtime);
         }
@@ -841,7 +854,7 @@ export class SpreadService extends EventEmitter {
         else if (row.auto_trade_enabled === 1 && AUTO_TRADE_EXECUTION_ENABLED) {
             const singleLegSnapshot = this.getSnapshotFromRow(row, group);
             const singleLegCandidate = row.single_leg_detect_enabled === 1
-                ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot)
+                ? await this.findSingleLegCandidateForSubscription(row.id, singleLegSnapshot, openGroups)
                 : null;
             if (singleLegCandidate) {
                 runtime.locked = true;
@@ -869,10 +882,8 @@ export class SpreadService extends EventEmitter {
         else if (!runtime.expand.opening && !runtime.expand.closing && !runtime.shrink.opening && !runtime.shrink.closing) {
             runtime.locked = false;
         }
-        const [expandGroups, shrinkGroups] = await Promise.all([
-            this.findOpenGroupsForSubscription(row.id, 'expand'),
-            this.findOpenGroupsForSubscription(row.id, 'shrink'),
-        ]);
+        const expandGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, 'expand');
+        const shrinkGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, 'shrink');
         return {
             subscriptionId: row.id,
             accountGroupId: row.account_group_id,
@@ -885,9 +896,6 @@ export class SpreadService extends EventEmitter {
     async maybeRunAutoTrade(runtime, snapshot) {
         const row = runtime.row;
         const state = this.getAutoTradeRuntimeState(row);
-        const group = await this.getLatestRuntimeGroup(row, runtime);
-        const effectiveSnapshot = this.getSnapshotFromRow(row, group);
-        const spreadState = this.getRuntimeState(row.id);
         state.enabled = row.auto_trade_enabled === 1;
         state.accountGroupId = row.account_group_id;
         if (!AUTO_TRADE_EXECUTION_ENABLED) {
@@ -898,6 +906,10 @@ export class SpreadService extends EventEmitter {
             state.locked = false;
             return;
         }
+        const group = await this.getLatestRuntimeGroup(row, runtime);
+        const effectiveSnapshot = this.getSnapshotFromRow(row, group);
+        const spreadState = this.getRuntimeState(row.id);
+        const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
         const availabilityReason = getAutoTradeAvailabilityReason(row, group, effectiveSnapshot.status);
         if (availabilityReason) {
             applyAutoTradeAvailabilityReason(state, availabilityReason);
@@ -912,21 +924,21 @@ export class SpreadService extends EventEmitter {
             return;
         }
         state.locked = false;
-        if (await this.handleSingleLegRisk(row, effectiveSnapshot, state))
+        if (await this.handleSingleLegRisk(row, effectiveSnapshot, state, openGroups))
             return;
-        if (await this.tryAutoClose(row, effectiveSnapshot, state, 'expand'))
+        if (await this.tryAutoClose(row, effectiveSnapshot, state, openGroups, 'expand'))
             return;
-        if (await this.tryAutoClose(row, effectiveSnapshot, state, 'shrink'))
+        if (await this.tryAutoClose(row, effectiveSnapshot, state, openGroups, 'shrink'))
             return;
-        if (await this.tryAutoOpen(row, effectiveSnapshot, state, 'expand'))
+        if (await this.tryAutoOpen(row, effectiveSnapshot, state, openGroups, 'expand'))
             return;
-        if (await this.tryAutoOpen(row, effectiveSnapshot, state, 'shrink'))
+        if (await this.tryAutoOpen(row, effectiveSnapshot, state, openGroups, 'shrink'))
             return;
     }
-    async handleSingleLegRisk(row, snapshot, state) {
+    async handleSingleLegRisk(row, snapshot, state, openGroups) {
         if (row.single_leg_detect_enabled !== 1)
             return false;
-        const candidate = await this.findSingleLegCandidateForSubscription(row.id, snapshot);
+        const candidate = await this.findSingleLegCandidateForSubscription(row.id, snapshot, openGroups);
         if (!candidate)
             return false;
         const sideState = candidate.side === 'expand' ? state.expand : state.shrink;
@@ -1091,7 +1103,7 @@ export class SpreadService extends EventEmitter {
             return existing.group;
         throw new NotFoundError('AccountGroup', row.account_group_id);
     }
-    async tryAutoOpen(row, snapshot, state, side) {
+    async tryAutoOpen(row, snapshot, state, openGroups, side) {
         const sideState = side === 'expand' ? state.expand : state.shrink;
         const spreadState = this.getRuntimeState(row.id);
         const enabled = side === 'expand' ? row.auto_open_expand_enabled === 1 : row.auto_open_shrink_enabled === 1;
@@ -1113,7 +1125,7 @@ export class SpreadService extends EventEmitter {
             sideState.lastReason = `开仓冷却中，剩余 ${getCooldownRemainingSeconds(sideState)} 秒`;
             return false;
         }
-        const currentGroups = await this.findOpenGroupsForSubscription(row.id, side);
+        const currentGroups = this.filterOpenGroupsForSubscription(openGroups, row.id, side);
         if (currentGroups.length >= targetGroups) {
             sideState.lastReason = `已达到目标开仓组数（${currentGroups.length}/${targetGroups}）`;
             return false;
@@ -1221,7 +1233,7 @@ export class SpreadService extends EventEmitter {
             return false;
         }
     }
-    async tryAutoClose(row, snapshot, state, side) {
+    async tryAutoClose(row, snapshot, state, openGroups, side) {
         const sideState = side === 'expand' ? state.expand : state.shrink;
         const spreadState = this.getRuntimeState(row.id);
         const enabled = row.auto_close_enabled === 1
@@ -1239,7 +1251,7 @@ export class SpreadService extends EventEmitter {
             sideState.lastReason = `平仓冷却中，剩余 ${getCooldownRemainingSeconds(sideState)} 秒`;
             return false;
         }
-        const groups = await this.findOpenGroupsForSubscription(row.id, side);
+        const groups = this.filterOpenGroupsForSubscription(openGroups, row.id, side);
         if (groups.length === 0) {
             sideState.lastReason = '当前无可自动平仓订单组';
             return false;
@@ -1366,23 +1378,12 @@ export class SpreadService extends EventEmitter {
             shortStableSeconds: getAutoTradeShrinkStableSeconds(spreadState),
         });
     }
-    async findOpenGroupsForSubscription(subscriptionId, side) {
-        const groups = await this.orderGroupService.listOpenRuntimeGroups();
-        return groups.filter((group) => {
-            if (group.isFullyClosed)
-                return false;
-            if ((group.items ?? []).some((item) => item.status === 'closing'))
-                return false;
-            const metadata = parseSpreadRemark(group.remark);
-            if (metadata.subscriptionId !== subscriptionId)
-                return false;
-            if (side === 'expand')
-                return metadata.direction === 'sellB_buyA';
-            return metadata.direction === 'sellA_buyB';
-        });
+    async findOpenGroupsForSubscription(subscriptionId, side, openGroups) {
+        const groups = openGroups ?? await this.orderGroupService.listOpenRuntimeGroups();
+        return this.filterOpenGroupsForSubscription(groups, subscriptionId, side);
     }
-    async findSingleLegCandidateForSubscription(subscriptionId, snapshot) {
-        const groups = await this.orderGroupService.listOpenRuntimeGroups();
+    async findSingleLegCandidateForSubscription(subscriptionId, snapshot, openGroups) {
+        const groups = openGroups ?? await this.orderGroupService.listOpenRuntimeGroups();
         const candidates = groups
             .flatMap((group) => {
             const metadata = parseSpreadRemark(group.remark);
@@ -1408,6 +1409,20 @@ export class SpreadService extends EventEmitter {
         })
             .sort((a, b) => b.referenceTime - a.referenceTime || b.group.id - a.group.id);
         return candidates[0] ?? null;
+    }
+    filterOpenGroupsForSubscription(groups, subscriptionId, side) {
+        return groups.filter((group) => {
+            if (group.isFullyClosed)
+                return false;
+            if ((group.items ?? []).some((item) => item.status === 'closing'))
+                return false;
+            const metadata = parseSpreadRemark(group.remark);
+            if (metadata.subscriptionId !== subscriptionId)
+                return false;
+            if (side === 'expand')
+                return metadata.direction === 'sellB_buyA';
+            return metadata.direction === 'sellA_buyB';
+        });
     }
     getSingleLegRuntimeState(groupId) {
         const existing = this.singleLegRuntimeByGroupId.get(groupId);

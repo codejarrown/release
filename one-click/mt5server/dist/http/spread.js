@@ -524,6 +524,7 @@ export function registerSpreadRoutes(app, spreadService) {
                 type: 'object',
                 properties: {
                     accountGroupId: { type: 'integer', minimum: 1 },
+                    subscriptionId: { type: 'integer', minimum: 1 },
                 },
             },
             response: {
@@ -532,10 +533,14 @@ export function registerSpreadRoutes(app, spreadService) {
         },
     }, async (request) => {
         const accountGroupIdRaw = request.query.accountGroupId;
+        const subscriptionIdRaw = request.query.subscriptionId;
         const accountGroupId = accountGroupIdRaw === undefined
             ? undefined
             : parseId(String(accountGroupIdRaw), 'accountGroupId');
-        return { data: await spreadService.listAutoTradeRuntime(accountGroupId) };
+        const subscriptionId = subscriptionIdRaw === undefined
+            ? undefined
+            : parseId(String(subscriptionIdRaw), 'subscriptionId');
+        return { data: await spreadService.listAutoTradeRuntime(accountGroupId, subscriptionId) };
     });
     app.get('/api/v1/account-groups/:accountGroupId/spread-panel', {
         schema: {

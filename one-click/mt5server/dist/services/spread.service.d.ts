@@ -330,7 +330,7 @@ export declare class SpreadService extends EventEmitter {
     getSnapshot(subscriptionId: number): SpreadSnapshotDto | null;
     getRuntimeSubscriptionIds(): number[];
     getAutoTradeRuntime(subscriptionId: number): Promise<AutoTradeRuntimeDto>;
-    listAutoTradeRuntime(accountGroupId?: number): Promise<AutoTradeRuntimeDto[]>;
+    listAutoTradeRuntime(accountGroupId?: number, subscriptionId?: number): Promise<AutoTradeRuntimeDto[]>;
     getChart(accountGroupId: number, subscriptionId: number, timeframeMinutes: SpreadChartTimeframeMinutes, limit?: number): Promise<SpreadChartDto>;
     getSecondLineSeed(accountGroupId: number, subscriptionId: number, seconds?: number): Promise<SpreadSecondLineSeedDto>;
     placeOrder(accountGroupId: number, input: PlaceSpreadOrderInput): Promise<OrderGroupDto>;
@@ -367,6 +367,7 @@ export declare class SpreadService extends EventEmitter {
     private maybeLogAutoTradeDecision;
     private findOpenGroupsForSubscription;
     private findSingleLegCandidateForSubscription;
+    private filterOpenGroupsForSubscription;
     private getSingleLegRuntimeState;
     private resetAutoTradePause;
     private maybeNotifySingleLeg;

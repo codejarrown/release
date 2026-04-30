@@ -3,12 +3,16 @@ import { NotFoundError, ValidationError } from '../../lib/errors.js';
 import { TelegramSender } from './telegram.js';
 import { DingTalkSender } from './dingtalk.js';
 import { WebhookSender } from './webhook.js';
-import { NtfySender } from './ntfy.js';
+import { NtfyQuotaExceededError, NtfySender } from './ntfy.js';
+import { BarkSender } from './bark.js';
+const NTFY_QUOTA_MUTE_MS = 60 * 60 * 1000;
 // ---- Service ----
 export class PushService {
     repo;
     encryptionKey;
     senders = new Map();
+    mutedChannelUntil = new Map();
+    muteNoticeSentAt = new Map();
     constructor(repo, encryptionKey) {
         this.repo = repo;
         this.encryptionKey = encryptionKey;
@@ -16,6 +20,7 @@ export class PushService {
         this.registerSender(new DingTalkSender());
         this.registerSender(new WebhookSender());
         this.registerSender(new NtfySender());
+        this.registerSender(new BarkSender());
     }
     registerSender(sender) {
         this.senders.set(sender.platform, sender);
@@ -84,6 +89,8 @@ export class PushService {
         const results = await Promise.allSettled(channels.map((ch) => this.sendToChannel(ch, message)));
         for (const [i, result] of results.entries()) {
             if (result.status === 'rejected') {
+                if (this.shouldSuppressChannelErrorLog(channels[i], result.reason))
+                    continue;
                 console.error(`Push to channel #${channels[i].id} (${channels[i].platform}) failed:`, result.reason);
             }
         }
@@ -105,6 +112,10 @@ export class PushService {
         const failedChannelIds = [];
         for (const [i, result] of results.entries()) {
             if (result.status === 'rejected') {
+                if (this.shouldSuppressChannelErrorLog(enabledChannels[i], result.reason)) {
+                    failedChannelIds.push(enabledChannels[i].id);
+                    continue;
+                }
                 failedChannelIds.push(enabledChannels[i].id);
                 console.error(`Push to channel #${enabledChannels[i].id} (${enabledChannels[i].platform}) failed:`, result.reason);
             }
@@ -120,13 +131,53 @@ export class PushService {
         };
     }
     async sendToChannel(channel, message) {
+        this.assertChannelAvailable(channel);
         const sender = this.senders.get(channel.platform);
         if (!sender) {
             throw new Error(`No sender registered for platform: ${channel.platform}`);
         }
         const configJson = decrypt(channel.config_encrypted, this.encryptionKey);
         const config = JSON.parse(configJson);
-        await sender.send(message, config);
+        try {
+            await sender.send(message, config);
+        }
+        catch (error) {
+            this.handleChannelSendError(channel, error);
+            throw error;
+        }
+    }
+    assertChannelAvailable(channel) {
+        const mutedUntil = this.mutedChannelUntil.get(channel.id) ?? 0;
+        if (mutedUntil <= Date.now())
+            return;
+        throw new Error(`push channel muted until ${new Date(mutedUntil).toISOString()} due to previous quota limit`);
+    }
+    handleChannelSendError(channel, error) {
+        if (channel.platform !== 'ntfy')
+            return;
+        if (!(error instanceof NtfyQuotaExceededError))
+            return;
+        this.mutedChannelUntil.set(channel.id, Date.now() + NTFY_QUOTA_MUTE_MS);
+    }
+    shouldSuppressChannelErrorLog(channel, error) {
+        if (channel.platform !== 'ntfy')
+            return false;
+        if (error instanceof NtfyQuotaExceededError) {
+            return this.markMuteNotice(channel.id);
+        }
+        if (error instanceof Error && error.message.includes('push channel muted until')) {
+            return this.markMuteNotice(channel.id);
+        }
+        return false;
+    }
+    markMuteNotice(channelId) {
+        const now = Date.now();
+        const lastNoticeAt = this.muteNoticeSentAt.get(channelId) ?? 0;
+        if (now - lastNoticeAt < NTFY_QUOTA_MUTE_MS) {
+            return true;
+        }
+        this.muteNoticeSentAt.set(channelId, now);
+        return false;
     }
 }
 function toDto(row) {
@@ -154,6 +205,14 @@ function validatePlatformConfig(platform, config) {
         case 'webhook':
             if (!isNonEmptyString(config.url)) {
                 throw new ValidationError('Webhook config requires url');
+            }
+            return;
+        case 'bark':
+            if (!isNonEmptyString(config.deviceKey)) {
+                throw new ValidationError('Bark config requires deviceKey');
+            }
+            if (config.serverUrl !== undefined && !isNonEmptyString(config.serverUrl)) {
+                throw new ValidationError('Bark config serverUrl must be a non-empty string');
             }
             return;
         case 'ntfy':

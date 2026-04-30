@@ -30,6 +30,8 @@ export declare class PushService {
     private readonly repo;
     private readonly encryptionKey;
     private readonly senders;
+    private readonly mutedChannelUntil;
+    private readonly muteNoticeSentAt;
     constructor(repo: IPushChannelRepository, encryptionKey: string);
     registerSender(sender: PushSender): void;
     list(): Promise<PushChannelDto[]>;
@@ -43,5 +45,9 @@ export declare class PushService {
     broadcast(message: PushMessage): Promise<void>;
     sendToChannels(channelIds: number[], message: PushMessage): Promise<PushSendResult>;
     private sendToChannel;
+    private assertChannelAvailable;
+    private handleChannelSendError;
+    private shouldSuppressChannelErrorLog;
+    private markMuteNotice;
 }
 //# sourceMappingURL=index.d.ts.map

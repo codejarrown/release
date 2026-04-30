@@ -3,7 +3,7 @@ import { ValidationError } from '../lib/errors.js';
 import { zToSchema, idParam, errorResponse } from './schema-helper.js';
 const createBody = z.object({
     name: z.string().min(1),
-    platform: z.enum(['telegram', 'dingtalk', 'feishu', 'webhook', 'ntfy']),
+    platform: z.enum(['telegram', 'dingtalk', 'feishu', 'webhook', 'ntfy', 'bark']),
     config: z.record(z.unknown()).describe('平台配置（如 Telegram: { botToken, chatId }）'),
 });
 const updateBody = z.object({
@@ -16,7 +16,7 @@ const channelDto = {
     properties: {
         id: { type: 'integer' },
         name: { type: 'string' },
-        platform: { type: 'string', enum: ['telegram', 'dingtalk', 'feishu', 'webhook', 'ntfy'] },
+        platform: { type: 'string', enum: ['telegram', 'dingtalk', 'feishu', 'webhook', 'ntfy', 'bark'] },
         isEnabled: { type: 'boolean' },
         createdAt: { type: 'string' },
         updatedAt: { type: 'string' },

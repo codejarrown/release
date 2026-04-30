@@ -80638,6 +80638,73 @@ function tryParseJson(value) {
   }
 }
 
+// src/services/push/bark.ts
+var DEFAULT_SERVER_URL2 = "https://api.day.app";
+var DEFAULT_LEVEL = "critical";
+var DEFAULT_CALL = "1";
+var BarkSender = class {
+  platform = "bark";
+  async send(message, config2) {
+    const deviceKey = normalizeString2(config2.deviceKey);
+    if (!deviceKey) {
+      throw new Error("Bark config requires deviceKey");
+    }
+    const serverUrl = normalizeBaseUrl2(config2.serverUrl) ?? DEFAULT_SERVER_URL2;
+    const query = new URLSearchParams();
+    const level = normalizeString2(config2.level) ?? mapLevel(message.level) ?? DEFAULT_LEVEL;
+    const call = normalizeCall(config2.call) ?? DEFAULT_CALL;
+    const group = normalizeString2(config2.group);
+    const sound = normalizeString2(config2.sound);
+    const icon = normalizeString2(config2.icon);
+    const url = normalizeString2(config2.url);
+    if (group) query.set("group", group);
+    if (sound) query.set("sound", sound);
+    if (icon) query.set("icon", icon);
+    if (url) query.set("url", url);
+    query.set("call", call);
+    query.set("level", level);
+    const endpoint = `${serverUrl}/${encodeURIComponent(deviceKey)}/${encodeURIComponent(message.title)}/${encodeURIComponent(buildBody2(message))}`;
+    const res = await fetch(`${endpoint}?${query.toString()}`, {
+      method: "GET"
+    });
+    if (!res.ok) {
+      throw new Error(`Bark API error (${res.status}): ${await res.text()}`);
+    }
+  }
+};
+function buildBody2(message) {
+  const lines = [message.body];
+  if (message.metadata && Object.keys(message.metadata).length > 0) {
+    lines.push("", JSON.stringify(message.metadata, null, 2));
+  }
+  return lines.join("\n");
+}
+function normalizeBaseUrl2(value) {
+  const text = normalizeString2(value);
+  if (!text) return null;
+  return text.replace(/\/+$/, "");
+}
+function normalizeString2(value) {
+  return typeof value === "string" && value.trim().length > 0 ? value.trim() : null;
+}
+function normalizeCall(value) {
+  if (value === 1 || value === "1" || value === true || value === "true") return "1";
+  if (value === 0 || value === "0" || value === false || value === "false") return "0";
+  return null;
+}
+function mapLevel(level) {
+  switch (level) {
+    case "error":
+      return "critical";
+    case "warn":
+      return "timeSensitive";
+    case "info":
+      return "active";
+    default:
+      return null;
+  }
+}
+
 // src/services/push/index.ts
 var NTFY_QUOTA_MUTE_MS = 60 * 60 * 1e3;
 var PushService = class {
@@ -80648,6 +80715,7 @@ var PushService = class {
     this.registerSender(new DingTalkSender());
     this.registerSender(new WebhookSender());
     this.registerSender(new NtfySender());
+    this.registerSender(new BarkSender());
   }
   repo;
   encryptionKey;
@@ -80829,6 +80897,14 @@ function validatePlatformConfig(platform, config2) {
     case "webhook":
       if (!isNonEmptyString(config2.url)) {
         throw new ValidationError("Webhook config requires url");
+      }
+      return;
+    case "bark":
+      if (!isNonEmptyString(config2.deviceKey)) {
+        throw new ValidationError("Bark config requires deviceKey");
+      }
+      if (config2.serverUrl !== void 0 && !isNonEmptyString(config2.serverUrl)) {
+        throw new ValidationError("Bark config serverUrl must be a non-empty string");
       }
       return;
     case "ntfy":
@@ -86516,7 +86592,7 @@ function registerRealtimeGateway(app, wsManager, accountService, spreadService, 
 // src/http/push.ts
 var createBody = external_exports.object({
   name: external_exports.string().min(1),
-  platform: external_exports.enum(["telegram", "dingtalk", "feishu", "webhook", "ntfy"]),
+  platform: external_exports.enum(["telegram", "dingtalk", "feishu", "webhook", "ntfy", "bark"]),
   config: external_exports.record(external_exports.unknown()).describe("\u5E73\u53F0\u914D\u7F6E\uFF08\u5982 Telegram: { botToken, chatId }\uFF09")
 });
 var updateBody = external_exports.object({
@@ -86529,7 +86605,7 @@ var channelDto = {
   properties: {
     id: { type: "integer" },
     name: { type: "string" },
-    platform: { type: "string", enum: ["telegram", "dingtalk", "feishu", "webhook", "ntfy"] },
+    platform: { type: "string", enum: ["telegram", "dingtalk", "feishu", "webhook", "ntfy", "bark"] },
     isEnabled: { type: "boolean" },
     createdAt: { type: "string" },
     updatedAt: { type: "string" }

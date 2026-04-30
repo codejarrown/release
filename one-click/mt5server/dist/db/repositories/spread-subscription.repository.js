@@ -26,6 +26,17 @@ export class SpreadSubscriptionRepository {
             .orderBy('id', 'asc')
             .execute();
     }
+    async disableAllAutoTradeEnabled() {
+        const result = await this.db
+            .updateTable('spread_subscriptions')
+            .set({
+            auto_trade_enabled: 0,
+            updated_at: new Date().toISOString(),
+        })
+            .where('auto_trade_enabled', '=', 1)
+            .executeTakeFirst();
+        return Number(result.numUpdatedRows ?? 0);
+    }
     async create(data) {
         return this.db
             .insertInto('spread_subscriptions')
