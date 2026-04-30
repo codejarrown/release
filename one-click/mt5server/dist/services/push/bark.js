@@ -16,6 +16,11 @@ export class BarkSender {
         const sound = normalizeString(config.sound);
         const icon = normalizeString(config.icon);
         const url = normalizeString(config.url);
+        const volume = normalizeNumber(config.volume);
+        const badge = normalizeNumber(config.badge);
+        const autoCopy = normalizeCall(config.autoCopy);
+        const copy = normalizeString(config.copy);
+        const isArchive = normalizeCall(config.isArchive);
         if (group)
             query.set('group', group);
         if (sound)
@@ -24,6 +29,16 @@ export class BarkSender {
             query.set('icon', icon);
         if (url)
             query.set('url', url);
+        if (volume !== null)
+            query.set('volume', String(volume));
+        if (badge !== null)
+            query.set('badge', String(badge));
+        if (autoCopy)
+            query.set('autoCopy', autoCopy);
+        if (copy)
+            query.set('copy', copy);
+        if (isArchive)
+            query.set('isArchive', isArchive);
         query.set('call', call);
         query.set('level', level);
         const endpoint = `${serverUrl}/${encodeURIComponent(deviceKey)}/${encodeURIComponent(message.title)}/${encodeURIComponent(buildBody(message))}`;
@@ -56,6 +71,15 @@ function normalizeCall(value) {
         return '1';
     if (value === 0 || value === '0' || value === false || value === 'false')
         return '0';
+    return null;
+}
+function normalizeNumber(value) {
+    if (typeof value === 'number' && Number.isFinite(value))
+        return value;
+    if (typeof value === 'string' && value.trim()) {
+        const parsed = Number(value);
+        return Number.isFinite(parsed) ? parsed : null;
+    }
     return null;
 }
 function mapLevel(level) {

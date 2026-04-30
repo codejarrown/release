@@ -79755,12 +79755,8 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     if (dto.openCount > 0) {
       void Promise.resolve(this.pushService.broadcast({
         title: "\u8BA2\u5355\u7EC4\u5F00\u4ED3\u901A\u77E5",
-        body: [
-          `\u8BA2\u5355\u7EC4: ${dto.name} (#${dto.id})`,
-          `\u8D26\u53F7\u7EC4: ${dto.accountGroupName ?? "\u672A\u7ED1\u5B9A"}`,
-          `\u5F00\u4ED3\u6570\u91CF: ${dto.openCount}`,
-          `\u5F00\u4ED3\u5DEE\u4EF7: ${formatOrderGroupSpread(openSpread)}`
-        ].join("\n\n"),
+        body: `${dto.name} #${dto.id}
+\u5F00\u4ED3 ${dto.openCount} \u5355 \xB7 \u5DEE\u4EF7 ${formatOrderGroupSpread(openSpread)}`,
         level: "info",
         metadata: {
           kind: "order-group-open",
@@ -79824,14 +79820,10 @@ var OrderGroupService = class extends import_node_events2.EventEmitter {
     void Promise.resolve(this.pushService.broadcast({
       title: "\u8BA2\u5355\u7EC4\u5E73\u4ED3\u901A\u77E5",
       body: [
-        `\u8BA2\u5355\u7EC4: ${dto.name} (#${dto.id})`,
-        `\u8D26\u53F7\u7EC4: ${dto.accountGroupName ?? "\u672A\u7ED1\u5B9A"}`,
-        `\u662F\u5426\u5B8C\u5168\u5E73\u4ED3: ${dto.isFullyClosed ? "\u662F" : "\u5426"}`,
-        `\u5DF2\u5E73\u4ED3\u6570\u91CF: ${dto.closedCount}`,
-        `\u672A\u5E73\u4ED3\u6570\u91CF: ${dto.openCount}`,
-        `\u5E73\u4ED3\u5DEE\u4EF7: ${formatOrderGroupSpread(dto.closeSpread)}`,
-        `\u603B\u76C8\u4E8F: ${dto.totalProfit}`
-      ].join("\n\n"),
+        `${dto.name} #${dto.id}`,
+        `\u5DF2\u5E73 ${dto.closedCount} \xB7 \u672A\u5E73 ${dto.openCount}`,
+        `\u5DEE\u4EF7 ${formatOrderGroupSpread(dto.closeSpread)} \xB7 \u76C8\u4E8F ${dto.totalProfit}`
+      ].join("\n"),
       level: "info",
       metadata: {
         kind: "order-group-close",
@@ -80657,10 +80649,20 @@ var BarkSender = class {
     const sound = normalizeString2(config2.sound);
     const icon = normalizeString2(config2.icon);
     const url = normalizeString2(config2.url);
+    const volume = normalizeNumber(config2.volume);
+    const badge = normalizeNumber(config2.badge);
+    const autoCopy = normalizeCall(config2.autoCopy);
+    const copy = normalizeString2(config2.copy);
+    const isArchive = normalizeCall(config2.isArchive);
     if (group) query.set("group", group);
     if (sound) query.set("sound", sound);
     if (icon) query.set("icon", icon);
     if (url) query.set("url", url);
+    if (volume !== null) query.set("volume", String(volume));
+    if (badge !== null) query.set("badge", String(badge));
+    if (autoCopy) query.set("autoCopy", autoCopy);
+    if (copy) query.set("copy", copy);
+    if (isArchive) query.set("isArchive", isArchive);
     query.set("call", call);
     query.set("level", level);
     const endpoint = `${serverUrl}/${encodeURIComponent(deviceKey)}/${encodeURIComponent(message.title)}/${encodeURIComponent(buildBody2(message))}`;
@@ -80690,6 +80692,14 @@ function normalizeString2(value) {
 function normalizeCall(value) {
   if (value === 1 || value === "1" || value === true || value === "true") return "1";
   if (value === 0 || value === "0" || value === false || value === "false") return "0";
+  return null;
+}
+function normalizeNumber(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
   return null;
 }
 function mapLevel(level) {
@@ -80771,8 +80781,8 @@ var PushService = class {
     const row = await this.repo.findById(id);
     if (!row) throw new NotFoundError("PushChannel", id);
     await this.sendToChannel(row, {
-      title: "MT5 \u901A\u77E5\u6D4B\u8BD5 / MT5 Notification Test",
-      body: "### MT5 \u901A\u77E5\u6D4B\u8BD5\n\n\u8FD9\u662F\u4E00\u6761\u6765\u81EA MT5 Server \u7684\u6D4B\u8BD5\u901A\u77E5\u6D88\u606F\uFF08Test notification message from MT5 Server\uFF09\u3002",
+      title: "MT5 \u6D4B\u8BD5",
+      body: "\u6765\u81EA MT5 Server \u7684\u6D4B\u8BD5\u6D88\u606F",
       level: "error"
     });
   }
@@ -81484,11 +81494,9 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const result = await this.pushService.sendToChannels(channelIds, {
       title: `${runtime.row.name} \xB7 ${directionInfo.label}`,
       body: [
-        `${runtime.group.name} \xB7 ${directionInfo.spreadField}`,
-        `\u5F53\u524D ${directionInfo.spreadField}=${spreadValue}\uFF0C\u9608\u503C ${directionInfo.operatorLabel} ${threshold}`,
-        `\u7A33\u5B9A ${stableSeconds}s`,
-        `A ${runtime.row.symbol_a} / B ${runtime.row.symbol_b}`
-      ].join("\n\n"),
+        `${directionInfo.spreadField} ${spreadValue} ${directionInfo.operatorLabel} ${threshold}`,
+        `\u7A33\u5B9A ${stableSeconds}s`
+      ].join("\n"),
       level: "info",
       metadata: {
         kind: "spread-stable-threshold",
@@ -82335,11 +82343,10 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     const result = await this.pushService.sendToChannels(channelIds, {
       title: `${row.name} \xB7 \u5355\u817F\u98CE\u9669`,
       body: [
-        `\u8BA2\u5355\u7EC4 #${candidate.group.id} \xB7 ${directionLabel}`,
+        `${directionLabel} \xB7 \u8BA2\u5355\u7EC4 #${candidate.group.id}`,
         reason,
-        `\u5F53\u524D\u4EF7\u5DEE ${currentSpreadText}\uFF0C\u504F\u79FB ${driftText}`,
-        `\u52A8\u4F5C ${action}`
-      ].join("\n\n"),
+        `\u4EF7\u5DEE ${currentSpreadText} \xB7 \u504F\u79FB ${driftText}`
+      ].join("\n"),
       level,
       metadata: {
         kind: "auto-trade-single-leg",
@@ -82370,11 +82377,9 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     await this.pushService.sendToChannels(channelIds, {
       title: `${row.name} \xB7 ${actionLabel}`,
       body: [
-        `${sideLabel} \xB7 \u8BA2\u9605 #${row.id}`,
-        reason,
-        `\u5F53\u524D\u4EF7\u5DEE ${spreadText}`,
-        `\u52A8\u4F5C ${action}`
-      ].join("\n\n"),
+        `${sideLabel} \xB7 \u4EF7\u5DEE ${spreadText}`,
+        reason
+      ].join("\n"),
       level,
       metadata: {
         kind: "auto-trade",
