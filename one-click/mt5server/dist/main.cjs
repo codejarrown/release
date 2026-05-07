@@ -81196,7 +81196,8 @@ var SpreadService = class extends import_node_events4.EventEmitter {
   async getAutoTradeRuntime(subscriptionId) {
     const row = await this.repo.findById(subscriptionId);
     if (!row) throw new NotFoundError("SpreadSubscription", subscriptionId);
-    return this.buildAutoTradeRuntimeDto(row);
+    const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
+    return this.buildAutoTradeRuntimeDto(row, openGroups);
   }
   async listAutoTradeRuntime(accountGroupId, subscriptionId) {
     if (subscriptionId !== void 0) {
@@ -81205,10 +81206,12 @@ var SpreadService = class extends import_node_events4.EventEmitter {
       if (accountGroupId !== void 0 && row.account_group_id !== accountGroupId) {
         return [];
       }
-      return [await this.buildAutoTradeRuntimeDto(row)];
+      const openGroups2 = await this.orderGroupService.listOpenRuntimeGroups();
+      return [await this.buildAutoTradeRuntimeDto(row, openGroups2)];
     }
     const rows = accountGroupId !== void 0 ? await this.repo.findAllByAccountGroupId(accountGroupId) : await this.repo.findEnabled();
-    return Promise.all(rows.map((row) => this.buildAutoTradeRuntimeDto(row)));
+    const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
+    return Promise.all(rows.map((row) => this.buildAutoTradeRuntimeDto(row, openGroups)));
   }
   async getChart(accountGroupId, subscriptionId, timeframeMinutes, limit = 120) {
     validateChartQuery(timeframeMinutes, limit);
@@ -81727,10 +81730,9 @@ var SpreadService = class extends import_node_events4.EventEmitter {
     this.autoTradeRuntimeById.set(row.id, state);
     return state;
   }
-  async buildAutoTradeRuntimeDto(row) {
+  async buildAutoTradeRuntimeDto(row, openGroups) {
     const runtime = this.getAutoTradeRuntimeState(row);
     const group = await this.getLatestRuntimeGroup(row);
-    const openGroups = await this.orderGroupService.listOpenRuntimeGroups();
     if (!AUTO_TRADE_EXECUTION_ENABLED) {
       applyAutoTradeFeatureDisabledReason(runtime);
     }
@@ -82940,9 +82942,6 @@ function getAutoCloseProtectionError(row, snapshot, side) {
     const protection2 = row.auto_close_expand_protection;
     if (protection2 === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5E73\u6269\u4FDD\u62A4\u4EF7";
     const limitPrice = protection2 + spreadAdj;
-    if (snapshot.shortSpread !== null && limitPrice <= snapshot.shortSpread) {
-      return `\u5E73\u6269\u9650\u5236\u4EF7 ${roundNumber(limitPrice)} \u9700\u9AD8\u4E8E\u5F53\u524D\u7F29\u4EF7 ${roundNumber(snapshot.shortSpread)}`;
-    }
     if (snapshot.longSpread === null || snapshot.longSpread <= limitPrice) {
       return `\u5F53\u524D\u6269\u4EF7 ${snapshot.longSpread === null ? "\u2014" : roundNumber(snapshot.longSpread)} \u672A\u9AD8\u4E8E\u5E73\u6269\u9650\u5236\u4EF7 ${roundNumber(limitPrice)}`;
     }
@@ -82951,9 +82950,6 @@ function getAutoCloseProtectionError(row, snapshot, side) {
   const protection = row.auto_close_shrink_protection;
   if (protection === null) return "\u672A\u914D\u7F6E\u81EA\u52A8\u5E73\u7F29\u4FDD\u62A4\u4EF7";
   const shrinkClosePrice = protection - spreadAdj;
-  if (snapshot.longSpread !== null && shrinkClosePrice >= snapshot.longSpread) {
-    return `\u5E73\u7F29\u9650\u5236\u4EF7 ${roundNumber(shrinkClosePrice)} \u9700\u4F4E\u4E8E\u5F53\u524D\u6269\u4EF7 ${roundNumber(snapshot.longSpread)}`;
-  }
   if (snapshot.shortSpread === null || snapshot.shortSpread >= shrinkClosePrice) {
     return `\u5F53\u524D\u7F29\u4EF7 ${snapshot.shortSpread === null ? "\u2014" : roundNumber(snapshot.shortSpread)} \u672A\u4F4E\u4E8E\u5E73\u7F29\u9650\u5236\u4EF7 ${roundNumber(shrinkClosePrice)}`;
   }

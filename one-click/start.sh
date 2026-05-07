@@ -10,6 +10,17 @@ command_exists() {
   command -v "$1" >/dev/null 2>&1
 }
 
+use_local_dotnet_if_available() {
+  if command_exists dotnet; then
+    return
+  fi
+
+  if [ -x "$HOME/.dotnet/dotnet" ]; then
+    export DOTNET_ROOT="$HOME/.dotnet"
+    export PATH="$DOTNET_ROOT:$PATH"
+  fi
+}
+
 install_with_brew() {
   if ! command_exists brew; then
     echo "Homebrew not found. Please install Homebrew first: https://brew.sh/"
@@ -28,6 +39,8 @@ install_with_apt() {
 }
 
 ensure_runtime() {
+  use_local_dotnet_if_available
+
   if ! command_exists node; then
     echo "==> Node.js not found, installing..."
     case "$OS_NAME" in
